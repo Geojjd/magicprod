@@ -1,0 +1,155 @@
+/* app/globals.css */
+
+/* -------------------------
+   FL Studio-ish Dark Theme
+-------------------------- */
+
+:root {
+  /* Core */
+  --bg: #0b0e14;
+  --bg2: #0f1420;
+  --panel: #111827;
+  --panel2: #0f172a;
+  --border: rgba(255, 255, 255, 0.08);
+
+  /* Text */
+  --text: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.65);
+  --faint: rgba(255, 255, 255, 0.45);
+
+  /* Accents (FL-ish) */
+  --accent: #ff8a00;   /* orange */
+  --accent2: #22c55e;  /* green */
+  --accent3: #60a5fa;  /* blue */
+
+  /* Danger/Warning */
+  --danger: #ef4444;
+
+  /* Radii */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+
+  /* Shadows / Glow */
+  --shadow: 0 10px 30px rgba(0,0,0,0.35);
+  --glow: 0 0 0 1px rgba(255, 138, 0, 0.18), 0 0 22px rgba(255, 138, 0, 0.12);
+
+  /* Spacing */
+  --pad: 16px;
+  --gap: 12px;
+
+  /* Font */
+  --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--text);
+  background:
+    radial-gradient(1200px 700px at 20% -10%, rgba(96, 165, 250, 0.12), transparent 60%),
+    radial-gradient(900px 600px at 90% 0%, rgba(34, 197, 94, 0.10), transparent 55%),
+    radial-gradient(900px 600px at 60% 110%, rgba(255, 138, 0, 0.12), transparent 55%),
+    linear-gradient(180deg, var(--bg) 0%, #070913 100%);
+}
+
+a { color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
+
+::selection {
+  background: rgba(255, 138, 0, 0.25);
+}
+
+/* Scrollbar (nice on Windows) */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  border: 2px solid rgba(0, 0, 0, 0.0);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); }
+*::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.03); }
+
+/* Focus ring */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(255, 138, 0, 0.35), 0 0 0 4px rgba(255, 138, 0, 0.15);
+  border-radius: 10px;
+}
+
+.fileInput {
+  width: 100%;
+  padding: 10px;
+  border-radius: var(--radius2);
+  border: 1px dashed rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.03);
+  color: var(--text);
+}
+
+
+
+
+input[type="text"], input[type="number"], select, textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
+  border-color: rgba(255, 138, 0, 0.35);
+  background: rgba(255,255,255,0.06);
+}
+
+/* Range slider */
+input[type="range"] {
+  -webkit-appearance: none;
+  width: 260px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.14);
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.72));
+  border: 1px solid rgba(0,0,0,0.35);
+  box-shadow: 0 0 0 1px rgba(255, 138, 0, 0.18), 0 8px 20px rgba(0,0,0,0.35);
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  box-shadow: var(--glow), 0 8px 20px rgba(0,0,0,0.35);
+}
+
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+/* Audio element */
+audio {
+  width: 100%;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  filter: contrast(1.05);
+}
+
+/* Pre blocks */
+pre {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  padding: 12px;
+  border-radius: var(--r-md);
+  overflow: auto;
+}
