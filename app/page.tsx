@@ -360,6 +360,22 @@ export default function Home() {
   const activeAudioSrc =
     abMode === 'original' ? (originalUrl ?? undefined) : (resultUrl ?? originalUrl ?? undefined)
 
+
+    const buyPlan = async (plan: "starter" | "pro") => {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/stripe/checkout`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${session.access_token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ plan }),
+  })
+
+  const data = await res.json()
+  window.location.href = data.url
+}
+
+
   return (
     <main className={styles.page}>
       {/* Header */}
