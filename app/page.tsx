@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import axios from 'axios'
 import Waveform, { WaveApi } from './components/Waveform'
 import ReferenceMatchUI from './components/ReferenceMatchUI'
 import styles from './page.module.css'
@@ -132,7 +131,7 @@ export default function Home() {
       fd.append('start', '0')
       fd.append('end', '0')
 
-      const res = await axios.post(`${API}/ai-beats`, fd, { responseType: 'json' })
+      const res = await api.post(`${API}/ai-beats`, fd, { responseType: 'json' })
       setBeatTimes(res.data.beat_times || [])
       setBpm(res.data.bpm || 0)
     } catch (err) {
@@ -151,7 +150,7 @@ export default function Home() {
       fd.append('bars', String(genBars))
       fd.append('seed', String(genSeed))
 
-      const res = await axios.post(`${API}/ai-generate`, fd, { responseType: 'json' })
+      const res = await api.post(`${API}/ai-generate`, fd, { responseType: 'json' })
       const wavUrl = res.data.output_url as string
 
       const blob = await fetch(wavUrl).then((r) => r.blob())
@@ -198,7 +197,7 @@ export default function Home() {
       fd.append('start', String(selection?.start ?? 0))
       fd.append('end', String(selection?.end ?? 0))
 
-      const res = await axios.post(`${API}/ai-loops`, fd, { responseType: 'json' })
+      const res = await api.post(`${API}/ai-loops`, fd, { responseType: 'json' })
       setLoops(res.data.loops || [])
     } catch (err) {
       console.error(err)
@@ -223,7 +222,7 @@ export default function Home() {
       const planFd = new FormData()
       planFd.append('command', finalCommand)
 
-      const planRes = await axios.post(`${API}/ai-plan`, planFd, { responseType: 'json' })
+      const planRes = await api.post(`${API}/ai-plan`, planFd, { responseType: 'json' })
       setPlan(planRes.data)
 
       // 2) edit
@@ -234,7 +233,7 @@ export default function Home() {
       fd.append('command', finalCommand)
       fd.append('strength', String(strength))
 
-      const res = await axios.post(`${API}/ai-edit`, fd, { responseType: 'json' })
+      const res = await api.post(`${API}/ai-edit`, fd, { responseType: 'json' })
       setResultUrl(res.data.output_url)
       setAbMode('result')
     } catch (err) {
@@ -266,7 +265,7 @@ export default function Home() {
         fd.append('end', '0')
       }
 
-      const res = await axios.post(`${API}/ai-master`, fd, { responseType: 'json' })
+      const res = await api.post(`${API}/ai-master`, fd, { responseType: 'json' })
       setPlan(res.data.plan ?? res.data)
       setResultUrl(res.data.output_url)
       setAbMode('result')
@@ -299,7 +298,7 @@ export default function Home() {
         fd.append('end', '0')
       }
 
-      const res = await axios.post(`${API}/ai-vocal`, fd, { responseType: 'json' })
+      const res = await api.post(`${API}/ai-vocal`, fd, { responseType: 'json' })
       setPlan(res.data.plan ?? res.data)
       setResultUrl(res.data.output_url)
       setAbMode('result')
@@ -330,7 +329,7 @@ export default function Home() {
       fd.append('vocal_style', vocalStyle)
       fd.append('vocal_strength', String(strength))
 
-      const res = await axios.post(`${API}/ai-export-stems`, fd, { responseType: 'json' })
+      const res = await api.post(`${API}/ai-export-stems`, fd, { responseType: 'json' })
       window.open(res.data.output_url as string, '_blank')
     } catch (err) {
       console.error(err)
@@ -350,7 +349,7 @@ export default function Home() {
       fd.append('seed', String(melSeed))
       fd.append('output', melOutput)
 
-      const res = await axios.post(`${API}/ai-melody`, fd, { responseType: 'json' })
+      const res = await api.post(`${API}/ai-melody`, fd, { responseType: 'json' })
       setMelRes(res.data)
     } catch (err) {
       console.error(err)
@@ -364,20 +363,30 @@ export default function Home() {
     abMode === 'original' ? (originalUrl ?? undefined) : (resultUrl ?? originalUrl ?? undefined)
 
 
-    const buyPlan = async (plan: "starter" | "pro") => {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/stripe/checkout`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${session.access_token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ plan }),
-  })
+  const buyplan = async (plan: "starter" | "pro") => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
 
-  const data = await res.json()
-  window.location.href = data.url
-}
+    if (!session) {
+      alert('You must be logged in to purchase a plan.')
+      return
+    }
 
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE}/stripe/checkout/`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ plan }),
+      }
+    )
+    const data = await res.json()
+    window.location.href = data.url
+  }
 
   return (
     <main className={styles.page}>
@@ -389,7 +398,6 @@ export default function Home() {
         </div>
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span className={styles.badge}>Local API: {API}</span>
           <button className={`${styles.btn} ${styles.btnSmall}`} onClick={logout}>
             Logout
           </button>
