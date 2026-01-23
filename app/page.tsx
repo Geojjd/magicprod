@@ -6,6 +6,7 @@ import Waveform, { WaveApi } from './components/Waveform'
 import ReferenceMatchUI from './components/ReferenceMatchUI'
 import styles from './page.module.css'
 import { supabase } from '@/app/lib/supabase'
+import {api} from "@/app/lib/api";
 
 type Selection = { start: number; end: number }
 
@@ -45,6 +46,8 @@ type MelodyResult = {
 }
 
 const API = process.env.NEXT_PUBLIC_API_BASE!
+
+
 
 const logout = async () => {
   await supabase.auth.signOut()
