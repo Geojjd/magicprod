@@ -44,7 +44,7 @@ type MelodyResult = {
   audio_url?: string
 }
 
-const API = process.env.NEXT_PUBLIC_API_BASE!
+
 
 
 
@@ -131,7 +131,7 @@ export default function Home() {
       fd.append('start', '0')
       fd.append('end', '0')
 
-      const res = await api.post(`${API}/ai-beats`, fd, { responseType: 'json' })
+      const res = await api.post(`${api}/ai-beats`, fd, { responseType: 'json' })
       setBeatTimes(res.data.beat_times || [])
       setBpm(res.data.bpm || 0)
     } catch (err) {
@@ -150,7 +150,7 @@ export default function Home() {
       fd.append('bars', String(genBars))
       fd.append('seed', String(genSeed))
 
-      const res = await api.post(`${API}/ai-generate`, fd, { responseType: 'json' })
+      const res = await api.post(`${api}/ai-generate`, fd, { responseType: 'json' })
       const wavUrl = res.data.output_url as string
 
       const blob = await fetch(wavUrl).then((r) => r.blob())
@@ -197,7 +197,7 @@ export default function Home() {
       fd.append('start', String(selection?.start ?? 0))
       fd.append('end', String(selection?.end ?? 0))
 
-      const res = await api.post(`${API}/ai-loops`, fd, { responseType: 'json' })
+      const res = await api.post(`${api}/ai-loops`, fd, { responseType: 'json' })
       setLoops(res.data.loops || [])
     } catch (err) {
       console.error(err)
@@ -222,7 +222,7 @@ export default function Home() {
       const planFd = new FormData()
       planFd.append('command', finalCommand)
 
-      const planRes = await api.post(`${API}/ai-plan`, planFd, { responseType: 'json' })
+      const planRes = await api.post(`${api}/ai-plan`, planFd, { responseType: 'json' })
       setPlan(planRes.data)
 
       // 2) edit
@@ -233,7 +233,7 @@ export default function Home() {
       fd.append('command', finalCommand)
       fd.append('strength', String(strength))
 
-      const res = await api.post(`${API}/ai-edit`, fd, { responseType: 'json' })
+      const res = await api.post(`${api}/ai-edit`, fd, { responseType: 'json' })
       setResultUrl(res.data.output_url)
       setAbMode('result')
     } catch (err) {
@@ -265,7 +265,7 @@ export default function Home() {
         fd.append('end', '0')
       }
 
-      const res = await api.post(`${API}/ai-master`, fd, { responseType: 'json' })
+      const res = await api.post(`${api}/ai-master`, fd, { responseType: 'json' })
       setPlan(res.data.plan ?? res.data)
       setResultUrl(res.data.output_url)
       setAbMode('result')
@@ -298,7 +298,7 @@ export default function Home() {
         fd.append('end', '0')
       }
 
-      const res = await api.post(`${API}/ai-vocal`, fd, { responseType: 'json' })
+      const res = await api.post(`${api}/ai-vocal`, fd, { responseType: 'json' })
       setPlan(res.data.plan ?? res.data)
       setResultUrl(res.data.output_url)
       setAbMode('result')
@@ -329,7 +329,7 @@ export default function Home() {
       fd.append('vocal_style', vocalStyle)
       fd.append('vocal_strength', String(strength))
 
-      const res = await api.post(`${API}/ai-export-stems`, fd, { responseType: 'json' })
+      const res = await api.post(`${api}/ai-export-stems`, fd, { responseType: 'json' })
       window.open(res.data.output_url as string, '_blank')
     } catch (err) {
       console.error(err)
@@ -349,7 +349,7 @@ export default function Home() {
       fd.append('seed', String(melSeed))
       fd.append('output', melOutput)
 
-      const res = await api.post(`${API}/ai-melody`, fd, { responseType: 'json' })
+      const res = await api.post(`${api}/ai-melody`, fd, { responseType: 'json' })
       setMelRes(res.data)
     } catch (err) {
       console.error(err)
