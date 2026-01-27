@@ -44,7 +44,7 @@ export default function Home() {
   const api = useMemo(() => {
     return axios.create({
       baseURL: API_BASE,
-      timeout: 120000, // ✅ 2 minutes (audio AI can take time)
+      timeout: 180000, // ✅ 2 minutes (audio AI can take time)
       withCredentials: false,
     })
   }, [API_BASE])
