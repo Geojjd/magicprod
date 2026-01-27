@@ -1,190 +1,172 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import Waveform, { WaveApi } from './components/Waveform'
-import ReferenceMatchUI from './components/ReferenceMatchUI'
-import styles from './page.module.css'
-import { supabase } from '@/app/lib/supabase'
-import {api} from "@/app/lib/api";
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import axios, { AxiosError } from 'axios'
+import { supabase } from './lib/supabase' // adjust if your path differs (e.g. "@/app/lib/supabase")
 
-type Selection = { start: number; end: number }
+/**
+ * ✅ This page.tsx is built to ensure:
+ * - ALL calls go to Railway via ONE baseURL
+ * - ALL endpoints use relative paths (/ai-xxx) so no double URL bugs
+ * - Timeouts are long enough for audio/AI work
+ * - Easy debug logs + clear errors
+ *
+ * Required env on Vercel + locally:
+ * NEXT_PUBLIC_API_BASE=https://magicprod-backend-production.up.railway.app
+ */
 
-type LoopCandidate = {
-  start: number
-  end: number
-  score: number
-  bars?: number
-  bpm?: number
-}
+type Plan = any
+type BeatResponse = any
+type MelodyResponse = any
+type LoopsResponse = { loops?: any[] }
+type EditResponse = { output_url?: string }
+type MasterResponse = { output_url?: string }
+type VocalResponse = { output_url?: string }
+type ExportStemsResponse = { output_url?: string }
 
-type HistoryItem = {
-  text: string
-  strength: number
-  time: number
-}
-
-const PRESETS = [
-  { label: 'Punchier drums', text: 'Make the drums punchier, add transient shaping, keep it clean.' },
-  { label: 'Louder / normalize', text: 'Normalize to a competitive loudness without clipping.' },
-  { label: 'More bass', text: 'Boost the sub bass and tighten the low end.' },
-  { label: 'Lo-fi', text: 'Add subtle vinyl noise, gentle saturation, and a lowpass around 12k.' },
-  { label: 'Wider', text: 'Make the mix wider but keep the low end mono.' },
-  { label: 'Darker', text: 'Make it darker and warmer, reduce harsh highs.' },
-  { label: 'Brighter', text: 'Add clarity and brightness without making it harsh.' },
-  { label: 'Glue', text: 'Add light bus compression for glue, keep transients.' },
-] as const
-
-type MasterPreset = 'streaming' | 'loud' | 'club'
-type VocalStyle = 'clean' | 'rap' | 'melodic' | 'aggressive'
-
-type MelodyOutput = 'midi' | 'audio' | 'both'
-type MelodyResult = {
-  meta: { bpm: number; bars: number; seed: number; key: string; scale: string; instrument: number }
-  midi_url?: string
-  audio_url?: string
-}
-
-
-
-
-
-const logout = async () => {
-  await supabase.auth.signOut()
-  document.cookie = `sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`
-  window.location.href = '/login'
+function getNiceAxiosError(err: unknown) {
+  const e = err as AxiosError<any>
+  if (axios.isAxiosError(e)) {
+    const status = e.response?.status
+    const data = e.response?.data
+    const msg = e.message
+    return { status, data, msg }
+  }
+  return { status: undefined, data: undefined, msg: String(err) }
 }
 
 export default function Home() {
-  // AI command + strength
-  const [strength, setStrength] = useState<number>(60)
-  const [command, setCommand] = useState('')
+  // -----------------------------
+  // 1) API client (ONE baseURL)
+  // -----------------------------
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE
 
-  // Mastering
-  const [masterPreset, setMasterPreset] = useState<MasterPreset>('streaming')
-  const [masterWholeTrack, setMasterWholeTrack] = useState(true)
-  const [mastering, setMastering] = useState(false)
-
-  // Vocals
-  const [vocalStyle, setVocalStyle] = useState<VocalStyle>('clean')
-  const [vocalWholeTrack, setVocalWholeTrack] = useState(true)
-  const [vocalsBusy, setVocalsBusy] = useState(false)
-
-  // Beat generator
-  const [genPrompt, setGenPrompt] = useState('dark drill, punchy drums')
-  const [genBpm, setGenBpm] = useState(140)
-  const [genBars, setGenBars] = useState(8)
-  const [genSeed, setGenSeed] = useState(0)
-  const [generating, setGenerating] = useState(false)
-
-  // Melody generator
-  const [melPrompt, setMelPrompt] = useState('dark drill melody, plucky, simple')
-  const [melBpm, setMelBpm] = useState(140)
-  const [melBars, setMelBars] = useState(8)
-  const [melSeed, setMelSeed] = useState(0)
-  const [melOutput, setMelOutput] = useState<MelodyOutput>('midi')
-  const [melBusy, setMelBusy] = useState(false)
-  const [melRes, setMelRes] = useState<MelodyResult | null>(null)
-
-  // Audio + selection
-  const [file, setFile] = useState<File | null>(null)
-  const [selection, setSelection] = useState<Selection | null>(null)
-
-  // Backend results
-  const [plan, setPlan] = useState<any>(null)
-  const [resultUrl, setResultUrl] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  // Beat grid
-  const [beatTimes, setBeatTimes] = useState<number[]>([])
-  const [bpm, setBpm] = useState<number>(0)
-  const [lockBars, setLockBars] = useState<number>(4)
-
-  // Waveform controls
-  const [waveApi, setWaveApi] = useState<WaveApi | null>(null)
-
-  // Loops
-  const [loops, setLoops] = useState<LoopCandidate[]>([])
-  const [finding, setFinding] = useState(false)
-
-  // A/B
-  const [abMode, setAbMode] = useState<'original' | 'result'>('original')
-
-  // History
-  const [history, setHistory] = useState<HistoryItem[]>([])
-
-  // Local preview URL for ORIGINAL uploaded/generated file
-  const originalUrl = useMemo(() => {
-    if (!file) return null
-    return URL.createObjectURL(file)
-  }, [file])
+  const api = useMemo(() => {
+    return axios.create({
+      baseURL: API_BASE,
+      timeout: 120000, // ✅ 2 minutes (audio AI can take time)
+      withCredentials: false,
+    })
+  }, [API_BASE])
 
   useEffect(() => {
-    return () => {
-      if (originalUrl) URL.revokeObjectURL(originalUrl)
+    console.log('API_BASE =', API_BASE)
+    if (!API_BASE) {
+      console.warn(
+        'NEXT_PUBLIC_API_BASE is missing. Set it in .env.local and Vercel env vars.'
+      )
     }
-  }, [originalUrl])
+  }, [API_BASE])
 
-  const fetchBeats = async (f: File) => {
+  // -----------------------------
+  // 2) Core state
+  // -----------------------------
+  const [file, setFile] = useState<File | null>(null)
+  const [originalUrl, setOriginalUrl] = useState<string | null>(null)
+  const [resultUrl, setResultUrl] = useState<string | null>(null)
+  const [abMode, setAbMode] = useState<'original' | 'result'>('original')
+
+  // selection region (waveform selection)
+  const [selection, setSelection] = useState<{ start: number; end: number } | null>(null)
+
+  // generic strength
+  const [strength, setStrength] = useState<number>(60)
+
+  // AI Edit
+  const [command, setCommand] = useState<string>('')
+
+  // Plan
+  const [plan, setPlan] = useState<Plan | null>(null)
+
+  // Loops
+  const [finding, setFinding] = useState(false)
+  const [loops, setLoops] = useState<any[]>([])
+
+  // Beats
+  const [beatsLoading, setBeatsLoading] = useState(false)
+  const [beats, setBeats] = useState<BeatResponse | null>(null)
+
+  // Melody generator
+  const [melBusy, setMelBusy] = useState(false)
+  const [melPrompt, setMelPrompt] = useState('')
+  const [melBpm, setMelBpm] = useState<number>(140)
+  const [melBars, setMelBars] = useState<number>(8)
+  const [melSeed, setMelSeed] = useState<number>(1)
+  const [melOutput, setMelOutput] = useState<'midi' | 'audio'>('midi')
+  const [melRes, setMelRes] = useState<MelodyResponse | null>(null)
+
+  // Vocals
+  const [vocalStyle, setVocalStyle] = useState<string>('clean')
+  const [vocalWholeTrack, setVocalWholeTrack] = useState<boolean>(true)
+  const [vocalsBusy, setVocalsBusy] = useState<boolean>(false)
+
+  // Mastering
+  const [masterPreset, setMasterPreset] = useState<string>('Streaming')
+  const [masterWholeTrack, setMasterWholeTrack] = useState<boolean>(true)
+  const [mastering, setMastering] = useState<boolean>(false)
+
+  // Export stems
+  const [exporting, setExporting] = useState(false)
+
+  // Busy state for AI edit
+  const [busy, setBusy] = useState(false)
+
+  // For <audio> player
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  const activeAudioSrc = useMemo(() => {
+    if (abMode === 'original') return originalUrl ?? undefined
+    return resultUrl ?? originalUrl ?? undefined
+  }, [abMode, originalUrl, resultUrl])
+
+  // -----------------------------
+  // 3) File handling
+  // -----------------------------
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null
+    setFile(f)
+    setPlan(null)
+    setLoops([])
+    setBeats(null)
+    setMelRes(null)
+    setResultUrl(null)
+
+    if (f) {
+      const url = URL.createObjectURL(f)
+      setOriginalUrl(url)
+      setAbMode('original')
+    } else {
+      setOriginalUrl(null)
+    }
+  }
+
+  // -----------------------------
+  // 4) Backend calls (IMPORTANT)
+  //    ✅ all routes are RELATIVE: '/ai-xxx'
+  // -----------------------------
+
+  async function fetchBeats(f: File) {
+    setBeatsLoading(true)
     try {
       const fd = new FormData()
       fd.append('file', f)
-      fd.append('start', '0')
-      fd.append('end', '0')
 
-      const res = await api.post(`${api}/ai-beats`, fd, { responseType: 'json' })
-      setBeatTimes(res.data.beat_times || [])
-      setBpm(res.data.bpm || 0)
+      if (selection) {
+        fd.append('start', String(selection.start ?? 0))
+        fd.append('end', String(selection.end ?? 0))
+      } else {
+        fd.append('start', '0')
+        fd.append('end', '0')
+      }
+
+      const res = await api.post('/ai-beats', fd, { responseType: 'json' })
+      setBeats(res.data)
     } catch (err) {
-      console.error('ai-beats failed:', err)
-      setBeatTimes([])
-      setBpm(0)
-    }
-  }
-
-  const generateBeat = async () => {
-    setGenerating(true)
-    try {
-      const fd = new FormData()
-      fd.append('prompt', genPrompt)
-      fd.append('bpm', String(genBpm))
-      fd.append('bars', String(genBars))
-      fd.append('seed', String(genSeed))
-
-      const res = await api.post(`${api}/ai-generate`, fd, { responseType: 'json' })
-      const wavUrl = res.data.output_url as string
-
-      const blob = await fetch(wavUrl).then((r) => r.blob())
-      const newFile = new File([blob], 'generated_beat.wav', { type: 'audio/wav' })
-
-      setFile(newFile)
-      setSelection(null)
-      setPlan(null)
-      setResultUrl(null)
-      setWaveApi(null)
-      setLoops([])
-      setAbMode('original')
-
-      await fetchBeats(newFile)
-    } catch (err) {
-      console.error(err)
-      alert('Beat generation failed. Check backend terminal.')
+      console.error('ai-beats failed:', getNiceAxiosError(err))
+      alert('Beat analysis failed. Check backend terminal + browser console.')
     } finally {
-      setGenerating(false)
+      setBeatsLoading(false)
     }
-  }
-
-  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] ?? null
-
-    setFile(f)
-    setSelection(null)
-    setPlan(null)
-    setResultUrl(null)
-    setWaveApi(null)
-    setLoops([])
-    setAbMode('original')
-
-    if (f) fetchBeats(f)
   }
 
   const findLoops = async () => {
@@ -197,11 +179,14 @@ export default function Home() {
       fd.append('start', String(selection?.start ?? 0))
       fd.append('end', String(selection?.end ?? 0))
 
-      const res = await api.post(`${api}/ai-loops`, fd, { responseType: 'json' })
-      setLoops(res.data.loops || [])
+      const res = await api.post<LoopsResponse>('/ai-loops', fd, {
+        responseType: 'json',
+      })
+      setLoops(res.data?.loops ?? [])
     } catch (err) {
-      console.error(err)
-      alert('Loop detection failed. Check backend terminal.')
+      console.error('ai-loops failed:', getNiceAxiosError(err))
+      setLoops([])
+      alert('Loop detection failed. Check backend terminal + browser console.')
     } finally {
       setFinding(false)
     }
@@ -214,15 +199,12 @@ export default function Home() {
     }
 
     setBusy(true)
-    const finalCommand = `${command.trim()} (strength: ${strength}%)`
-    setHistory((h) => [{ text: command.trim(), strength, time: Date.now() }, ...h].slice(0, 10))
-
     try {
       // 1) plan
       const planFd = new FormData()
-      planFd.append('command', finalCommand)
+      planFd.append('command', command.trim())
 
-      const planRes = await api.post(`${api}/ai-plan`, planFd, { responseType: 'json' })
+      const planRes = await api.post('/ai-plan', planFd, { responseType: 'json' })
       setPlan(planRes.data)
 
       // 2) edit
@@ -230,14 +212,19 @@ export default function Home() {
       fd.append('file', file)
       fd.append('start', String(selection.start))
       fd.append('end', String(selection.end))
-      fd.append('command', finalCommand)
+      fd.append('command', command.trim())
       fd.append('strength', String(strength))
 
-      const res = await api.post(`${api}/ai-edit`, fd, { responseType: 'json' })
-      setResultUrl(res.data.output_url)
-      setAbMode('result')
+      const res = await api.post<EditResponse>('/ai-edit', fd, { responseType: 'json' })
+      const out = res.data?.output_url
+      if (out) {
+        setResultUrl(out)
+        setAbMode('result')
+      } else {
+        alert('AI edit returned no output_url. Check backend logs.')
+      }
     } catch (err) {
-      console.error(err)
+      console.error('ai-edit failed:', getNiceAxiosError(err))
       alert('AI edit failed. Check backend terminal + browser console.')
     } finally {
       setBusy(false)
@@ -265,12 +252,16 @@ export default function Home() {
         fd.append('end', '0')
       }
 
-      const res = await api.post(`${api}/ai-master`, fd, { responseType: 'json' })
-      setPlan(res.data.plan ?? res.data)
-      setResultUrl(res.data.output_url)
-      setAbMode('result')
+      const res = await api.post<MasterResponse>('/ai-master', fd, { responseType: 'json' })
+      const out = res.data?.output_url
+      if (out) {
+        setResultUrl(out)
+        setAbMode('result')
+      } else {
+        alert('Mastering returned no output_url. Check backend logs.')
+      }
     } catch (err) {
-      console.error(err)
+      console.error('ai-master failed:', getNiceAxiosError(err))
       alert('Mastering failed. Check backend terminal + browser console.')
     } finally {
       setMastering(false)
@@ -298,12 +289,16 @@ export default function Home() {
         fd.append('end', '0')
       }
 
-      const res = await api.post(`${api}/ai-vocal`, fd, { responseType: 'json' })
-      setPlan(res.data.plan ?? res.data)
-      setResultUrl(res.data.output_url)
-      setAbMode('result')
+      const res = await api.post<VocalResponse>('/ai-vocal', fd, { responseType: 'json' })
+      const out = res.data?.output_url
+      if (out) {
+        setResultUrl(out)
+        setAbMode('result')
+      } else {
+        alert('Vocal returned no output_url. Check backend logs.')
+      }
     } catch (err) {
-      console.error(err)
+      console.error('ai-vocal failed:', getNiceAxiosError(err))
       alert('Vocal processing failed. Check backend terminal + browser console.')
     } finally {
       setVocalsBusy(false)
@@ -311,29 +306,39 @@ export default function Home() {
   }
 
   const exportStems = async () => {
-    if (!file) return alert('Upload a file first.')
+    if (!file) {
+      alert('Upload a file first.')
+      return
+    }
 
+    setExporting(true)
     try {
       const fd = new FormData()
       fd.append('file', file)
-
       fd.append('start', String(selection?.start ?? 0))
       fd.append('end', String(selection?.end ?? 0))
-
       fd.append('command', command.trim())
       fd.append('edit_strength', String(strength))
-
       fd.append('master_preset', masterPreset)
       fd.append('master_strength', String(strength))
-
       fd.append('vocal_style', vocalStyle)
       fd.append('vocal_strength', String(strength))
 
-      const res = await api.post(`${api}/ai-export-stems`, fd, { responseType: 'json' })
-      window.open(res.data.output_url as string, '_blank')
+      const res = await api.post<ExportStemsResponse>('/ai-export-stems', fd, {
+        responseType: 'json',
+      })
+
+      const out = res.data?.output_url
+      if (out) {
+        window.open(out as string, '_blank')
+      } else {
+        alert('Export returned no output_url. Check backend logs.')
+      }
     } catch (err) {
-      console.error(err)
-      alert('Export failed. Check backend terminal.')
+      console.error('ai-export-stems failed:', getNiceAxiosError(err))
+      alert('Export failed. Check backend terminal + browser console.')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -349,401 +354,305 @@ export default function Home() {
       fd.append('seed', String(melSeed))
       fd.append('output', melOutput)
 
-      const res = await api.post(`${api}/ai-melody`, fd, { responseType: 'json' })
+      const res = await api.post('/ai-melody', fd, { responseType: 'json' })
       setMelRes(res.data)
     } catch (err) {
-      console.error(err)
-      alert('Melody generation failed. Check backend terminal.')
+      console.error('ai-melody failed:', getNiceAxiosError(err))
+      alert('Melody generation failed. Check backend terminal + browser console.')
     } finally {
       setMelBusy(false)
     }
   }
 
-  const activeAudioSrc =
-    abMode === 'original' ? (originalUrl ?? undefined) : (resultUrl ?? originalUrl ?? undefined)
+  // Stripe buy plan (if you have it)
+  const buyplan = async (planName: 'starter' | 'pro') => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
 
+      if (!session) {
+        alert('You must be logged in to purchase a plan.')
+        return
+      }
 
-  const buyplan = async (plan: "starter" | "pro") => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-
-    if (!session) {
-      alert('You must be logged in to purchase a plan.')
-      return
-    }
-
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE}/stripe/checkout/`,
-      {
-        method: "POST",
+      // NOTE: this endpoint looks like a Next.js route in your app (not Railway):
+      // If your Stripe checkout endpoint is in Next.js (app/api/billing/checkout), keep it here:
+      const res = await fetch(`/api/billing/checkout`, {
+        method: 'POST',
         headers: {
           Authorization: `Bearer ${session.access_token}`,
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ plan }),
-      }
-    )
-    const data = await res.json()
-    window.location.href = data.url
+        body: JSON.stringify({ plan: planName }),
+      })
+
+      const data = await res.json()
+      if (data?.url) window.location.href = data.url
+      else alert('Checkout failed (missing url). Check server logs.')
+    } catch (err) {
+      console.error('buyplan failed:', err)
+      alert('Checkout failed. Check console.')
+    }
   }
 
+  // -----------------------------
+  // 5) Minimal UI (safe)
+  //    Replace this with your full UI if you want,
+  //    BUT KEEP the handlers + API rules above.
+  // -----------------------------
   return (
-    <main className={styles.page}>
-      {/* Header */}
-      <div className={styles.header}>
+    <main style={{ padding: 16, maxWidth: 1000, margin: '0 auto' }}>
+      <h1>MagicProd</h1>
+
+      <div style={{ marginTop: 12, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <div className={styles.title}>MagicProd</div>
-          <div className={styles.subtitle}>Beats • Melody • Vocals • Mastering • Reference Match • Export</div>
+          <label>Upload audio</label>
+          <input type="file" accept="audio/*" onChange={onFileChange} />
         </div>
 
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button className={`${styles.btn} ${styles.btnSmall}`} onClick={logout}>
-            Logout
+        <div>
+          <label>Strength</label>
+          <input
+            type="number"
+            value={strength}
+            onChange={(e) => setStrength(Number(e.target.value))}
+            style={{ width: 80, marginLeft: 8 }}
+          />
+        </div>
+
+        <div>
+          <button
+            onClick={() => file && fetchBeats(file)}
+            disabled={!file || beatsLoading}
+          >
+            {beatsLoading ? 'Analyzing…' : 'Analyze Beats'}
+          </button>
+        </div>
+
+        <div>
+          <button onClick={findLoops} disabled={!file || finding}>
+            {finding ? 'Finding…' : 'Find Loops'}
           </button>
         </div>
       </div>
 
-      <div className={styles.grid}>
-        {/* LEFT: Workspace */}
-        <div className={styles.card}>
-          <div className={styles.cardHeader}>
-            <div className={styles.cardTitle}>Workspace</div>
-            <span className={styles.badge}>Editor</span>
-          </div>
-
-          <div className={styles.cardBody}>
-            {/* Upload */}
-            <div className={styles.row}>
-              <input className={styles.fileInput} type="file" accept="audio/*" onChange={onFileChange} />
-            </div>
-
-            {file && (
-              <>
-                <div className={styles.divider} />
-
-                <div className={styles.row}>
-                  <span className={styles.label}>Lock:</span>
-                  {[1, 2, 4, 8].map((n) => (
-                    <button
-                      key={n}
-                      className={`${styles.btn} ${styles.btnSmall} ${lockBars === n ? styles.btnActive : ''}`}
-                      onClick={() => setLockBars(n)}
-                    >
-                      {n} bar{n > 1 ? 's' : ''}
-                    </button>
-                  ))}
-                  <span className={styles.badge}>BPM: {bpm ? Math.round(bpm) : '—'}</span>
-                </div>
-
-                <div style={{ marginTop: 10 }}>
-                  <Waveform
-                    file={file}
-                    beatTimes={beatTimes}
-                    bpm={bpm}
-                    lockBars={lockBars}
-                    onRegionChange={(start, end) => setSelection({ start, end })}
-                    onReady={setWaveApi}
-                  />
-                </div>
-
-                {/* Transport */}
-                <div className={styles.transport} style={{ marginTop: 10 }}>
-                  <button className={`${styles.btn} ${styles.btnSmall}`} onClick={() => waveApi?.playPause()} disabled={!waveApi}>
-                    Play / Pause
-                  </button>
-                  <button className={`${styles.btn} ${styles.btnSmall}`} onClick={() => waveApi?.stop()} disabled={!waveApi}>
-                    Stop
-                  </button>
-                  <button
-                    className={`${styles.btn} ${styles.btnSmall}`}
-                    onClick={() => waveApi?.playSelection()}
-                    disabled={!waveApi || !selection}
-                  >
-                    Play Selection
-                  </button>
-                  <button className={`${styles.btn} ${styles.btnSmall}`} onClick={findLoops} disabled={!file || finding}>
-                    {finding ? 'Finding Loops…' : 'Find Loops'}
-                  </button>
-
-                  <div style={{ marginLeft: 'auto' }} />
-                  <button
-                    className={`${styles.btn} ${styles.btnSmall} ${abMode === 'original' ? styles.btnActive : ''}`}
-                    onClick={() => setAbMode('original')}
-                    disabled={!originalUrl}
-                  >
-                    A: Original
-                  </button>
-                  <button
-                    className={`${styles.btn} ${styles.btnSmall} ${abMode === 'result' ? styles.btnActive : ''}`}
-                    onClick={() => setAbMode('result')}
-                    disabled={!resultUrl}
-                  >
-                    B: Result
-                  </button>
-                </div>
-
-                {selection && (
-                  <div style={{ marginTop: 8 }} className={styles.hint}>
-                    Selected: {selection.start.toFixed(2)}s – {selection.end.toFixed(2)}s
-                  </div>
-                )}
-
-                {/* A/B audio */}
-                <div className={styles.divider} />
-                <div className={styles.row}>
-                  <div className={styles.cardTitle}>A/B Player</div>
-                  <span className={styles.hint}>{abMode === 'original' ? 'Listening: original' : 'Listening: result'}</span>
-                </div>
-
-                {activeAudioSrc ? (
-                  <audio key={abMode + String(resultUrl)} controls src={activeAudioSrc} style={{ marginTop: 10 }} />
-                ) : (
-                  <div className={styles.hint} style={{ marginTop: 10 }}>
-                    No audio loaded yet.
-                  </div>
-                )}
-
-                {/* AI Command */}
-                <div className={styles.divider} />
-                <div className={styles.row}>
-                  {PRESETS.map((p) => (
-                    <button key={p.label} className={`${styles.btn} ${styles.btnSmall}`} onClick={() => setCommand(p.text)}>
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className={styles.row} style={{ marginTop: 10 }}>
-                  <input
-                    style={{ flex: 1 }}
-                    placeholder="e.g. normalize, make punchier, add bass..."
-                    value={command}
-                    onChange={(e) => setCommand(e.target.value)}
-                  />
-                  <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={applyAI} disabled={busy}>
-                    {busy ? 'Working…' : 'Apply AI'}
-                  </button>
-                </div>
-
-                {/* Strength */}
-                <div className={styles.row} style={{ marginTop: 10 }}>
-                  <span className={styles.label}>Strength:</span>
-                  <input type="range" min={0} max={100} value={strength} onChange={(e) => setStrength(Number(e.target.value))} />
-                  <span className={styles.badge}>{strength}%</span>
-                </div>
-
-                {/* Export */}
-                <div className={styles.row} style={{ marginTop: 10 }}>
-                  <button className={`${styles.btn} ${styles.btnGreen}`} onClick={exportStems}>
-                    Export Stems (ZIP)
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* Plan */}
-            {plan && (
-              <div className={styles.planBox}>
-                <div className={styles.divider} />
-                <div className={styles.row}>
-                  <div className={styles.cardTitle}>AI Plan</div>
-                  <span className={styles.hint}>Shows what the backend decided to do</span>
-                </div>
-                <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(plan, null, 2)}</pre>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* RIGHT: Tools Rack */}
-        <div className={styles.card}>
-          <div className={styles.cardHeader}>
-            <div className={styles.cardTitle}>Tools Rack</div>
-            <span className={styles.badge}>Generators + Processing</span>
-          </div>
-
-          <div className={styles.cardBody}>
-            {/* Beat Generator */}
-            <div className={styles.row}>
-              <div className={styles.cardTitle}>AI Beat Generator</div>
-              <span className={styles.hint}>Generate a beat WAV</span>
-            </div>
-
-            <div className={styles.inputRow} style={{ marginTop: 10 }}>
-              <input value={genPrompt} onChange={(e) => setGenPrompt(e.target.value)} placeholder="e.g. dark drill, punchy drums" />
-              <input type="number" value={genBpm} onChange={(e) => setGenBpm(Number(e.target.value))} placeholder="BPM" />
-              <input type="number" value={genBars} onChange={(e) => setGenBars(Number(e.target.value))} placeholder="Bars" />
-              <input type="number" value={genSeed} onChange={(e) => setGenSeed(Number(e.target.value))} placeholder="Seed" title="0 = random" />
-            </div>
-
-            <div className={styles.row} style={{ marginTop: 10 }}>
-              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={generateBeat} disabled={generating}>
-                {generating ? 'Generating…' : 'Generate Beat'}
-              </button>
-              <span className={styles.hint}>Tip: set Seed to the same number to regenerate the same beat.</span>
-            </div>
-
-            <div className={styles.divider} />
-
-            {/* Melody Generator */}
-            <div className={styles.row}>
-              <div className={styles.cardTitle}>AI Melody Generator</div>
-              <span className={styles.hint}>Choose MIDI / Audio / Both</span>
-            </div>
-
-            <div className={styles.inputRowMelody} style={{ marginTop: 10 }}>
-              <input value={melPrompt} onChange={(e) => setMelPrompt(e.target.value)} placeholder="e.g. dark drill melody, plucky, simple" />
-              <input type="number" value={melBpm} onChange={(e) => setMelBpm(Number(e.target.value))} placeholder="BPM" />
-              <input type="number" value={melBars} onChange={(e) => setMelBars(Number(e.target.value))} placeholder="Bars" />
-              <input type="number" value={melSeed} onChange={(e) => setMelSeed(Number(e.target.value))} placeholder="Seed" title="0 = random" />
-              <select className={styles.select} value={melOutput} onChange={(e) => setMelOutput(e.target.value as MelodyOutput)}>
-                <option value="midi">MIDI</option>
-                <option value="audio">Audio Preview</option>
-                <option value="both">Both</option>
-              </select>
-            </div>
-
-            <div className={styles.row} style={{ marginTop: 10 }}>
-              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={generateMelody} disabled={melBusy}>
-                {melBusy ? 'Generating…' : 'Generate Melody'}
-              </button>
-              <button
-                className={`${styles.btn}`}
-                onClick={() => {
-                  setMelBpm(genBpm)
-                  setMelBars(genBars)
-                  setMelSeed(genSeed)
-                }}
-                title="Copies BPM/Bars/Seed from your Beat Generator settings"
-              >
-                Use beat settings
-              </button>
-            </div>
-
-            {melRes && (
-              <>
-                <div className={styles.row} style={{ marginTop: 10 }}>
-                  <span className={styles.badge}>
-                    {melRes.meta.key} {melRes.meta.scale} • {melRes.meta.bars} bars • {melRes.meta.bpm} BPM
-                  </span>
-                  <span className={styles.hint}>Instrument (GM): {melRes.meta.instrument}</span>
-                </div>
-
-                {melRes.midi_url && (
-                  <div className={styles.row} style={{ marginTop: 10 }}>
-                    <a className={styles.link} href={melRes.midi_url} target="_blank" rel="noreferrer">
-                      Open MIDI
-                    </a>
-                    <a className={styles.link} href={melRes.midi_url} download>
-                      Download MIDI
-                    </a>
-                  </div>
-                )}
-
-                {melRes.audio_url && (
-                  <div style={{ marginTop: 10 }}>
-                    <audio controls src={melRes.audio_url} />
-                  </div>
-                )}
-              </>
-            )}
-
-            <div className={styles.divider} />
-
-            {/* Vocals */}
-            <div className={styles.row}>
-              <div className={styles.cardTitle}>AI Vocals</div>
-              <span className={styles.hint}>Chain styles</span>
-            </div>
-
-            <div className={styles.row} style={{ marginTop: 10 }}>
-              <label className={styles.label}>Style</label>
-              <select value={vocalStyle} onChange={(e) => setVocalStyle(e.target.value as VocalStyle)} className={styles.select}>
-                <option value="clean">Clean</option>
-                <option value="rap">Rap</option>
-                <option value="melodic">Melodic</option>
-                <option value="aggressive">Aggressive</option>
-              </select>
-
-              <label className={styles.label} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input type="checkbox" checked={vocalWholeTrack} onChange={(e) => setVocalWholeTrack(e.target.checked)} />
-                Whole track
-              </label>
-
-              <button className={`${styles.btn} ${styles.btnGreen}`} onClick={applyVocals} disabled={vocalsBusy || !file || (!vocalWholeTrack && !selection)}>
-                {vocalsBusy ? 'Processing…' : 'Apply Vocal Chain'}
-              </button>
-            </div>
-
-            <div className={styles.divider} />
-
-            {/* Mastering */}
-            <div className={styles.row}>
-              <div className={styles.cardTitle}>AI Mastering</div>
-              <span className={styles.hint}>Preset-based mastering</span>
-            </div>
-
-            <div className={styles.row} style={{ marginTop: 10 }}>
-              <label className={styles.label}>Preset</label>
-              <select value={masterPreset} onChange={(e) => setMasterPreset(e.target.value as MasterPreset)} className={styles.select}>
-                <option value="streaming">Streaming</option>
-                <option value="loud">Loud</option>
-                <option value="club">Club</option>
-              </select>
-
-              <label className={styles.label} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input type="checkbox" checked={masterWholeTrack} onChange={(e) => setMasterWholeTrack(e.target.checked)} />
-                Whole track
-              </label>
-
-              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={applyMastering} disabled={mastering || !file || (!masterWholeTrack && !selection)}>
-                {mastering ? 'Mastering…' : 'Apply Mastering'}
-              </button>
-            </div>
-
-            <div className={styles.divider} />
-
-            {/* Reference Matching */}
-            <div className={styles.row}>
-              <div className={styles.cardTitle}>Reference Matching</div>
-              <span className={styles.hint}>A/B match loudness + tone (safe MVP)</span>
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              <ReferenceMatchUI />
-            </div>
-          </div>
+      <div style={{ marginTop: 16 }}>
+        <label>Selection (seconds) — put your waveform selector into setSelection</label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+          <input
+            type="number"
+            placeholder="start"
+            value={selection?.start ?? 0}
+            onChange={(e) =>
+              setSelection((s) => ({ start: Number(e.target.value), end: s?.end ?? 0 }))
+            }
+          />
+          <input
+            type="number"
+            placeholder="end"
+            value={selection?.end ?? 0}
+            onChange={(e) =>
+              setSelection((s) => ({ start: s?.start ?? 0, end: Number(e.target.value) }))
+            }
+          />
+          <button onClick={() => setSelection(null)}>Clear</button>
         </div>
       </div>
 
-      {/* History */}
-      {history.length > 0 && (
-        <div className={styles.card} style={{ marginTop: 14 }}>
-          <div className={styles.cardHeader}>
-            <div className={styles.cardTitle}>History</div>
-            <span className={styles.hint}>Tap to reuse</span>
+      <div style={{ marginTop: 16 }}>
+        <label>A/B Mode</label>
+        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+          <button onClick={() => setAbMode('original')} disabled={!originalUrl}>
+            A: Original
+          </button>
+          <button onClick={() => setAbMode('result')} disabled={!resultUrl}>
+            B: Result
+          </button>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <audio ref={audioRef} controls src={activeAudioSrc} />
+        </div>
+      </div>
+
+      <hr style={{ margin: '20px 0' }} />
+
+      <section>
+        <h2>AI Edit</h2>
+        <input
+          value={command}
+          onChange={(e) => setCommand(e.target.value)}
+          placeholder="e.g. normalize, add bass, punchier drums..."
+          style={{ width: '100%', padding: 8 }}
+        />
+        <div style={{ marginTop: 10 }}>
+          <button onClick={applyAI} disabled={!file || !selection || busy}>
+            {busy ? 'Working…' : 'Apply AI Edit'}
+          </button>
+        </div>
+
+        {plan && (
+          <pre style={{ marginTop: 10, background: '#111', color: '#eee', padding: 10 }}>
+            {JSON.stringify(plan, null, 2)}
+          </pre>
+        )}
+      </section>
+
+      <hr style={{ margin: '20px 0' }} />
+
+      <section>
+        <h2>Mastering</h2>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select value={masterPreset} onChange={(e) => setMasterPreset(e.target.value)}>
+            <option value="Streaming">Streaming</option>
+            <option value="Club">Club</option>
+            <option value="Warm">Warm</option>
+          </select>
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              checked={masterWholeTrack}
+              onChange={(e) => setMasterWholeTrack(e.target.checked)}
+            />
+            Whole track
+          </label>
+          <button onClick={applyMastering} disabled={!file || mastering}>
+            {mastering ? 'Working…' : 'Apply Mastering'}
+          </button>
+        </div>
+      </section>
+
+      <hr style={{ margin: '20px 0' }} />
+
+      <section>
+        <h2>AI Vocals</h2>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select value={vocalStyle} onChange={(e) => setVocalStyle(e.target.value)}>
+            <option value="clean">Clean</option>
+            <option value="modern">Modern</option>
+            <option value="vintage">Vintage</option>
+          </select>
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              checked={vocalWholeTrack}
+              onChange={(e) => setVocalWholeTrack(e.target.checked)}
+            />
+            Whole track
+          </label>
+          <button onClick={applyVocals} disabled={!file || vocalsBusy}>
+            {vocalsBusy ? 'Working…' : 'Apply Vocal Chain'}
+          </button>
+        </div>
+      </section>
+
+      <hr style={{ margin: '20px 0' }} />
+
+      <section>
+        <h2>Export Stems</h2>
+        <button onClick={exportStems} disabled={!file || exporting}>
+          {exporting ? 'Exporting…' : 'Export Stems (ZIP)'}
+        </button>
+      </section>
+
+      <hr style={{ margin: '20px 0' }} />
+
+      <section>
+        <h2>AI Melody Generator</h2>
+        <input
+          value={melPrompt}
+          onChange={(e) => setMelPrompt(e.target.value)}
+          placeholder="Melody prompt…"
+          style={{ width: '100%', padding: 8 }}
+        />
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+          <label>
+            BPM{' '}
+            <input
+              type="number"
+              value={melBpm}
+              onChange={(e) => setMelBpm(Number(e.target.value))}
+              style={{ width: 90 }}
+            />
+          </label>
+          <label>
+            Bars{' '}
+            <input
+              type="number"
+              value={melBars}
+              onChange={(e) => setMelBars(Number(e.target.value))}
+              style={{ width: 70 }}
+            />
+          </label>
+          <label>
+            Seed{' '}
+            <input
+              type="number"
+              value={melSeed}
+              onChange={(e) => setMelSeed(Number(e.target.value))}
+              style={{ width: 70 }}
+            />
+          </label>
+          <label>
+            Output{' '}
+            <select value={melOutput} onChange={(e) => setMelOutput(e.target.value as any)}>
+              <option value="midi">midi</option>
+              <option value="audio">audio</option>
+            </select>
+          </label>
+
+          <button onClick={generateMelody} disabled={melBusy}>
+            {melBusy ? 'Working…' : 'Generate Melody'}
+          </button>
+        </div>
+
+        {melRes && (
+          <pre style={{ marginTop: 10, background: '#111', color: '#eee', padding: 10 }}>
+            {JSON.stringify(melRes, null, 2)}
+          </pre>
+        )}
+      </section>
+
+      <hr style={{ margin: '20px 0' }} />
+
+      <section>
+        <h2>Stripe Plans</h2>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={() => buyplan('starter')}>Buy Starter</button>
+          <button onClick={() => buyplan('pro')}>Buy Pro</button>
+        </div>
+      </section>
+
+      <hr style={{ margin: '20px 0' }} />
+
+      <section>
+        <h2>Debug info</h2>
+        <div style={{ fontSize: 14 }}>
+          <div>
+            <b>API_BASE</b>: {API_BASE || '(missing)'}
           </div>
-          <div className={styles.cardBody}>
-            <div style={{ display: 'grid', gap: 8 }}>
-              {history.map((h) => (
-                <button
-                  key={h.time}
-                  className={styles.btn}
-                  onClick={() => {
-                    setCommand(h.text)
-                    setStrength(h.strength)
-                  }}
-                  style={{ justifyContent: 'space-between' }}
-                >
-                  <span>{h.text}</span>
-                  <span className={styles.badge}>Strength: {h.strength}%</span>
-                </button>
-              ))}
-            </div>
+          <div>
+            <b>File</b>: {file ? file.name : '(none)'}
+          </div>
+          <div>
+            <b>Selection</b>:{' '}
+            {selection ? `${selection.start}s → ${selection.end}s` : '(none)'}
+          </div>
+          <div>
+            <b>Original URL</b>: {originalUrl ? 'set' : 'none'}
+          </div>
+          <div>
+            <b>Result URL</b>: {resultUrl ? 'set' : 'none'}
+          </div>
+          <div>
+            <b>Loops</b>: {loops.length}
+          </div>
+          <div>
+            <b>Beats</b>: {beats ? 'loaded' : 'none'}
           </div>
         </div>
-      )}
+      </section>
     </main>
   )
 }
