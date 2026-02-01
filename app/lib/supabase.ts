@@ -1,10 +1,19 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonkey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+let _client: SupabaseClient | null = null
 
-if (!supabaseUrl) throw new Error("supabaseUrl is required");
-if (!supabaseAnonkey) throw new Error("supabaseAnonKey is required");
+export function getSupabaseBrowserClient() {
+  if (_client) return _client
 
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-export const supabase = createClient(supabaseUrl, supabaseAnonkey);
+  // Don't crash the whole build. Only error when user actually tries to use it.
+  if (!url || !anon) {
+    console.warn('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY')
+    return null
+  }
+
+  _client = createClient(url, anon)
+  return _client
+}
