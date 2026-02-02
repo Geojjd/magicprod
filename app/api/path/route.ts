@@ -1,3 +1,5 @@
-export const runtime = "nodejs";
-const backend = process.env.backend_URL;
+import { NextResponse } from "next/server"
 
+export async function GET() {
+    return NextResponse.json({ok: true});
+}
