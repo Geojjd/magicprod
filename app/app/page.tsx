@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import axios, { AxiosError } from 'axios'
 import { getSupabaseBrowserClient } from '../lib/supabase' // adjust if your path differs (e.g. "@/app/lib/supabase")
+import Waveform, { WaveApi } from './components/Waveform'
 
 
 /**
