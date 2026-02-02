@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import axios, { AxiosError } from 'axios'
-import { supabase } from '../lib/supabase' // adjust if your path differs (e.g. "@/app/lib/supabase")
+import { getSupabaseBrowserClient } from '../lib/supabase' // adjust if your path differs (e.g. "@/app/lib/supabase")
 
 
 /**
@@ -369,6 +369,11 @@ export default function Home() {
   // Stripe buy plan (if you have it)
   const buyplan = async (planName: 'starter' | 'pro') => {
     try {
+      const supabase = getSupabaseBrowserClient()
+      if (!supabase) {
+        console.warn('Supabase not configured; skipping auth session check')
+        return
+      }
       const {
         data: { session },
       } = await supabase.auth.getSession()

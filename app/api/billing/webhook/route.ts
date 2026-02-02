@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server'
 import { headers } from 'next/headers'
-import { stripe } from '@/app/lib/stripe'
-import { supabaseAdmin } from '@/app/lib/SupabaseAdmin'
+import { getStripe } from '@/app/lib/stripe'
+import { getSupabaseAdmin } from '@/app/lib/SupabaseAdmin'
 
 export const runtime = 'nodejs' // IMPORTANT for Stripe signature
 
 export async function POST(req: Request) {
+  const stripe = getStripe()
+  const supabaseAdmin = getSupabaseAdmin()
   const sig = (await headers()).get('stripe-signature')
   if (!sig) return NextResponse.json({ error: 'Missing stripe-signature' }, { status: 400 })
 

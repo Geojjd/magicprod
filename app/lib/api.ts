@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { supabase } from './supabase'
+import { getSupabaseBrowserClient } from './supabase'
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE! 
 
@@ -9,14 +9,16 @@ export const api = axios.create({
 });
 
 
-//Attach supabase auth token to each request if available
 api.interceptors.request.use(async (config) => {
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) return config
+
     const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token;
+    const token = data.session?.access_token
 
     if (token) {
         config.headers = config.headers ?? {};
-        config.headers.Authorization = 'Bearer ${token}';
+        config.headers.Authorization = `Bearer ${token}`;
     }
 
     return config;

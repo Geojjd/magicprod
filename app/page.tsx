@@ -1,5 +1,5 @@
 
-'use client'
+
 import Link from "next/link";
 
 export default function Home() {
@@ -28,6 +28,8 @@ export default function Home() {
           <Link href="/app">
             <button>Try the App</button>
           </Link>
+          <strong>MagicProd</strong>
+          <div style={{ fontSize: 12, opacity: 0.6}}>deploy: v2-homepage</div>
         </div>
       </section>
     </main>
