@@ -1,4 +1,7 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
+import DashboardShell from "./ui/DashboardShell";
+
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -42,6 +45,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </main>
     </div>
   );
+  return <DashboardShell>{children}</DashboardShell>;
 }
 
 function NavItem({ href, label }: { href: string; label: string }) {
