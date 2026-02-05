@@ -1,64 +1,67 @@
 "use client";
 
 import { useState } from "react";
+import { supabaseBrowser } from "@/app/lib/supabaseBrowser";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { supabase } from "../lib/supabaseClient";
 
 export default function SignupPage() {
+  const supabase = supabaseBrowser();
   const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  async function onSignup(e: React.FormEvent) {
+  async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setMsg(null);
+    setError(null);
 
     const { error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: `${location.origin}/dashboard`,
+      },
     });
 
     setLoading(false);
 
-    if (error) return setMsg(error.message);
-
-    // If email confirmations are ON, user may need to confirm.
-    // Still send them to dashboard; middleware will block if session isn't active yet.
-    router.push("/dashboard");
+    if (error) {
+      setError(error.message);
+    } else {
+      router.push("/dashboard");
+    }
   }
 
   return (
-    <main style={{ maxWidth: 420, margin: "0 auto", padding: "80px 24px" }}>
-      <h1 style={{ fontSize: 36, marginBottom: 10 }}>Create account</h1>
-      <p style={{ opacity: 0.8, marginBottom: 24 }}>
-        Already have an account? <Link href="/login">Log in</Link>
-      </p>
+    <main style={{ maxWidth: 420, margin: "80px auto" }}>
+      <h1>Create account</h1>
 
-      <form onSubmit={onSignup} style={{ display: "grid", gap: 12 }}>
+      <form onSubmit={handleSignup}>
         <input
           placeholder="Email"
+          type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          type="email"
           required
         />
+
         <input
           placeholder="Password"
+          type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          type="password"
           required
         />
-        <button disabled={loading}>
-          {loading ? "Creating..." : "Sign up"}
-        </button>
-      </form>
 
-      {msg && <p style={{ marginTop: 12, color: "tomato" }}>{msg}</p>}
+        <button disabled={loading}>
+          {loading ? "Creating account..." : "Sign up"}
+        </button>
+
+        {error && <p style={{ color: "red" }}>{error}</p>}
+      </form>
     </main>
   );
 }

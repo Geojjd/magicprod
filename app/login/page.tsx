@@ -1,84 +1,25 @@
-"use client";
+use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
-import { supabase } from "../lib/supabaseClient";
-import LoginClient from "./LoginClient";
+import { supabaseBrowser } from "@/app/lib/supabaseBrowser";
 
-const styles = {
-  container: {
-    maxWidth: 420,
-    margin: "0 auto",
-    padding: "64px 24px",
-    background: "rgba(255,255,255,0.95)",
-    borderRadius: 16,
-    boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
-    display: "flex",
-    flexDirection: "column" as const,
-    alignItems: "center",
-  },
-  title: {
-    fontSize: 36,
-    marginBottom: 10,
-    fontWeight: 700,
-    color: "#222",
-    letterSpacing: 1,
-  },
-  subtitle: {
-    opacity: 0.8,
-    marginBottom: 24,
-    fontSize: 16,
-    color: "#555",
-  },
-  form: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: 16,
-    width: "100%",
-  },
-  input: {
-    padding: "12px 16px",
-    borderRadius: 8,
-    border: "1px solid #ddd",
-    fontSize: 16,
-    outline: "none",
-    transition: "border 0.2s",
-  },
-  button: {
-    padding: "12px 0",
-    borderRadius: 8,
-    border: "none",
-    background: "linear-gradient(90deg,#6366f1,#60a5fa)",
-    color: "#fff",
-    fontWeight: 600,
-    fontSize: 18,
-    cursor: "pointer",
-    boxShadow: "0 2px 8px rgba(99,102,241,0.08)",
-    transition: "background 0.2s",
-  },
-  error: {
-    marginTop: 12,
-    color: "tomato",
-    fontWeight: 500,
-    textAlign: "center" as const,
-  },
-};
-
-function LoginPageInner() {
+export default function LoginPage() {
+  const supabase = supabaseBrowser();
   const router = useRouter();
   const searchParams = useSearchParams();
+
   const next = searchParams.get("next") || "/dashboard";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  async function onLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setMsg(null);
+    setError(null);
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -87,49 +28,59 @@ function LoginPageInner() {
 
     setLoading(false);
 
-    if (error) return setMsg(error.message);
+    if (error) return setError(error.message);
 
     router.push(next);
+    router.refresh();
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/");
+    router.refresh();
   }
 
   return (
-    <main style={styles.container}>
-      <h1 style={styles.title}>Log in</h1>
-      <p style={styles.subtitle}>
-        New here? <Link href="/signup" style={{ color: "#6366f1", fontWeight: 500 }}>Create an account</Link>
-      </p>
+    <main style={{ maxWidth: 420, margin: "80px auto" }}>
+      <h1>Log in</h1>
 
-      <form onSubmit={onLogin} style={styles.form}>
+      <form onSubmit={handleLogin}>
         <input
-          style={styles.input}
           placeholder="Email"
+          type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          type="email"
           required
+          style={{ width: "100%", padding: 12, marginTop: 12 }}
         />
+
         <input
-          style={styles.input}
           placeholder="Password"
+          type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          type="password"
           required
+          style={{ width: "100%", padding: 12, marginTop: 12 }}
         />
-        <button style={styles.button} disabled={loading}>
+
+        <button
+          disabled={loading}
+          style={{ width: "100%", padding: 12, marginTop: 12 }}
+        >
           {loading ? "Logging in..." : "Log in"}
         </button>
+
+        {error && <p style={{ color: "red", marginTop: 12 }}>{error}</p>}
       </form>
 
-      {msg && <p style={styles.error}>{msg}</p>}
+      <div style={{ marginTop: 16, display: "flex", gap: 12 }}>
+        <button onClick={() => router.push("/signup")} style={{ padding: 10 }}>
+          Create account
+        </button>
+        <button onClick={handleLogout} style={{ padding: 10 }}>
+          Log out
+        </button>
+      </div>
     </main>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense>
-      <LoginPageInner />
-    </Suspense>
   );
 }

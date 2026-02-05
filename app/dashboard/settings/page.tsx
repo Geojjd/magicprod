@@ -1,8 +1,23 @@
 export default function SettingsPage() {
   return (
-    <main style={{ padding: 24 }}>
-      <h1 style={{ fontSize: 28, fontWeight: 900 }}>Settings</h1>
-      <p>We’ll add account settings + billing info here.</p>
-    </main>
+    <div>
+      <h1>Settings</h1>
+      <p>Manage Your account and preferences</p>
+
+      <section>
+        <h3>Account</h3>
+        <ul>
+          <li>Email</li>
+          <li>Password</li>
+          <li>Sign Out</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>Billing</h3>
+        <p>Plan, Payments, Invoices</p>
+      </section>
+    </div>
+
   );
 }
