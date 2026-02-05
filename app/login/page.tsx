@@ -75,6 +75,8 @@ function LoginPageInner() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
+
+
   async function onLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -90,6 +92,13 @@ function LoginPageInner() {
     if (error) return setMsg(error.message);
 
     router.push(next);
+    router.refresh();
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/");
+    router.refresh();
   }
 
   return (
@@ -118,6 +127,10 @@ function LoginPageInner() {
         />
         <button style={styles.button} disabled={loading}>
           {loading ? "Logging in..." : "Log in"}
+        </button>
+
+        <button onClick={handleLogout} style={{ padding: 10 }}>
+          Log out
         </button>
       </form>
 
