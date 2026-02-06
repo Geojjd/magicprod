@@ -22,7 +22,7 @@ export default function SignupPage() {
       email,
       password,
       options: {
-        emailRedirectTo: `${location.origin}/dashboard`,
+        emailRedirectTo: `${location.origin}/auth/callback`,
       },
     });
 
@@ -65,5 +65,6 @@ export default function SignupPage() {
     </main>
   );
 }
+
 console.log("URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
 console.log("KEY first 10:", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.slice(0,10));
