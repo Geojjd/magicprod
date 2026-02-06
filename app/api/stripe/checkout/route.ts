@@ -28,7 +28,17 @@ function supabaseServer() {
 }
 
 export async function POST(req: Request) {
-  const { priceId } = await req.json();
+  const { plan } = await req.json();
+  const PRICE_BY_PLAN = {
+    starter: process.env.STRIPE_PRICE_STARTER!,
+    pro: process.env.STRIPE_PRICE_PRO!,
+  } as const;
+
+  const priceId = PRICE_BY_PLAN[plan as "starter" | "pro"];
+
+  if (!priceId) {
+    return NextResponse.json({ error: "invalid plan"}, { status: 400});
+  }
 
   const supabase = supabaseServer();
   const { data: userData } = await supabase.auth.getUser();
