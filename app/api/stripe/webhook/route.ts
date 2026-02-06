@@ -55,7 +55,7 @@ async function upsertSubscriptionFromStripe(sub: Stripe.Subscription) {
     user_id: userId,
     status: sub.status,
     price_id: priceId,
-    current_period_end: new Date(periodEnd * 1000).toISOString(),
+    current_period_end: new Date(periodEnd * 1000),
     cancel_at_period_end: sub.cancel_at_period_end ?? false,
   };
 
