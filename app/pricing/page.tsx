@@ -18,9 +18,15 @@ export default function PricingPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify ({ plan }),
+                credentials: "include"
 
             });
             const data = await res.json();
+            if (res.status === 401) {
+                router.push("/login");
+                return;
+            }
+
             if (!res.ok) throw new Error(data?.error || "Checkout failed");
 
             window.location.href = data.url;

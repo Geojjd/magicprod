@@ -3,7 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { supabase } from "./app/lib/supabaseClient";
 
 export async function middleware(req: NextRequest) {
-  let res = NextResponse.next({ request: { headers: req.headers }});
+  let res = NextResponse.next();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,20 +21,14 @@ export async function middleware(req: NextRequest) {
       },
     },
   )
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user && req.nextUrl.pathname.startsWith("/dashbaord")) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("next", req.nextUrl.pathname);
-    return NextResponse.redirect(url);
-  }
+  await supabase.auth.getUser();
 
   return res;
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*"],
+  mather: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg\png|jpg|jpeg|gif|webp)$).*)",
+
+  ],
 };
