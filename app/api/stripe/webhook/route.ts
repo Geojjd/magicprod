@@ -41,17 +41,25 @@ async function upsertSubscriptionFromStripe(sub: Stripe.Subscription) {
     // If this happens, it means you created a subscription without linking a customer to a user
     throw new Error(`No Supabase user found for customer ${customerId}`);
   }
+ 
 
   const priceId = sub.items.data[0]?.price?.id ?? null;
+  
 
+  const periodEnd =
+    (sub as any).current_period_end ??
+    sub.billing_cycle_anchor;
+  
   const payload = {
     id: sub.id,
     user_id: userId,
     status: sub.status,
     price_id: priceId,
-    current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+    current_period_end: new Date(periodEnd * 1000).toISOString(),
     cancel_at_period_end: sub.cancel_at_period_end ?? false,
   };
+
+
 
   const { error } = await supabaseAdmin.from("subscriptions").upsert(payload);
   if (error) throw error;
