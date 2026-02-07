@@ -3,8 +3,14 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useRouter } from "next/navigation";
+import { requireActiveSub } from "@/app/lib/requireActiveSub";
+
+
+
 
 export default function DashboardPage() {
+
+
   return (
     <div style={styles.wrap}>
       <div style={styles.headerRow}>

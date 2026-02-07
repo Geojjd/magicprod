@@ -1,32 +1,27 @@
-import { NextRequest, NextResponse } from 'next/server';
-
-export const runtime = "nodejs";
-
-const backend = process.env.NEXT_PUBLIC_API_BASE;
-
+import { NextResponse } from "next/server";
+import { requireUserId, errorJson } from "@/app/api/_lib/apiAuth";
+import { enforceUsage } from "@/app/lib/billing/enforceUsage";
 
 export async function POST(req: Request) {
+  const auth = await requireUserId();
+  if (auth.res) return auth.res;
+  const userId = auth.userId;
 
-    if(!backend) {
-        return NextResponse.json(
-            { error: "NEXT_PUBLIC_API_BASE is missing"},
-            { status: 500}
-        );
-    }
+  try {
+    const body = await req.json();
 
-    const body = await req.formData();
+    // ✅ your real generation logic here
+    const result = { ok: true, type: "generate", input: body };
 
-    const res = await fetch(`${backend}/ai-generate`, {
-        method: 'POST',
-        body
+    // ✅ charge AFTER success
+    await enforceUsage({
+      userId,
+      eventType: "generation",
+      requestId: body?.requestId ?? crypto.randomUUID(),
     });
 
-    const text = await res.text();
-
-    return new NextResponse(text, {
-        status: res.status,
-        headers: {
-            "Content-Type": res.headers.get("content-type") || "application/json",
-        },
-        });
-    }
+    return NextResponse.json({ ok: true, result });
+  } catch (err) {
+    return errorJson(err);
+  }
+}

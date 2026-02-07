@@ -1,17 +1,25 @@
 import { NextResponse } from "next/server";
+import { requireUserId, errorJson } from "@/app/api/_lib/apiAuth";
+import { enforceUsage } from "@/app/lib/billing/enforceUsage";
 
 export async function POST(req: Request) {
-  const body = await req.formData();
+  const auth = await requireUserId();
+  if (auth.res) return auth.res;
+  const userId = auth.userId;
 
-  const res = await fetch(
-    "https://magicprod-backend-production.up.railway.app/ai-melody",
-    {
-      method: "POST",
-      body,
-    }
-  );
+  try {
+    const body = await req.json();
 
-  const data = await res.blob();
-  return new NextResponse(data, { status: res.status });
+    const result = { ok: true, type: "melody", input: body };
+
+    await enforceUsage({
+      userId,
+      eventType: "generation",
+      requestId: body?.requestId ?? crypto.randomUUID(),
+    });
+
+    return NextResponse.json({ ok: true, result });
+  } catch (err) {
+    return errorJson(err);
+  }
 }
-
