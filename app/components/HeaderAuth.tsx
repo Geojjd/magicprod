@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/app/lib/supabase' // adjust path if yours differs
+import { supabase } from "@/app/lib/supabaseClient"; // adjust path if yours differs
 
 export default function HeaderAuth() {
   const [email, setEmail] = useState<string | null>(null)
