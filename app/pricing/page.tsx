@@ -4,12 +4,19 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
 import PricingClient from "./PricingClient";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic"; // avoids static prerender issues
 
 type Plan = "starter" | "pro";
 
 export default function PricingPage() {
+    return (
+    <Suspense fallback={<div style={{ padding: 40 }}>Loading pricing...</div>}>
+      <PricingClient />
+    </Suspense>
+  );
+
   const router = useRouter();
   const searchParams = useSearchParams();
 

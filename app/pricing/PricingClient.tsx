@@ -8,8 +8,6 @@ type Plan = "starter" | "pro";
 export default function PricingClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-
-  // optional: show message if you ever pass ?msg=...
   const msg = searchParams.get("msg");
 
   const [loading, setLoading] = useState<Plan | null>(null);
@@ -31,7 +29,10 @@ export default function PricingClient() {
       }
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Checkout failed");
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Checkout failed");
+      }
 
       window.location.href = data.url;
     } catch (e: any) {
@@ -43,13 +44,15 @@ export default function PricingClient() {
   return (
     <main style={{ maxWidth: 1000, margin: "0 auto", padding: "48px 20px" }}>
       <h1 style={{ fontSize: 44, margin: 0 }}>Pricing</h1>
-      <p style={{ opacity: 0.8, marginTop: 10 }}>Choose a plan. You can cancel anytime.</p>
+      <p style={{ opacity: 0.8, marginTop: 10 }}>
+        Choose a plan. You can cancel anytime.
+      </p>
 
-      {msg ? (
+      {msg && (
         <div style={{ marginTop: 16, padding: 12, border: "1px solid #333", borderRadius: 12 }}>
           {msg}
         </div>
-      ) : null}
+      )}
 
       <div
         style={{
@@ -132,7 +135,7 @@ function PlanCard(props: {
           opacity: props.loading ? 0.7 : 1,
         }}
       >
-        {props.loading ? "Redirecting…" : props.cta}
+        {props.loading ? "Redirecting..." : props.cta}
       </button>
     </div>
   );
