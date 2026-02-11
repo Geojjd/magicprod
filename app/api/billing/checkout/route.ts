@@ -1,57 +1,42 @@
-import { NextResponse } from 'next/server'
-import { getStripe } from '@/app/lib/stripe'
-
-export const runtime = 'nodejs'
-
-
+import { NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { SHOPIFY_PLANS } from "@/app/lib/shopifyPlans";
+import type { PlanName } from "@/app/lib/plan";
 
 export async function POST(req: Request) {
-  try {
-    const body = await req.json()
-    const plan = String(body.plan || '').toLowerCase() // 'pro' | 'studio'
-    const userId = String(body.userId || '')
-    const email = String(body.email || '')
+  const supabase = createSupabaseServerClient();
+  const { data } = await supabase.auth.getUser();
+  const user = data?.user;
 
-    if (!userId) return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
-    if (!['pro', 'studio'].includes(plan)) return NextResponse.json({ error: 'Invalid plan' }, { status: 400 })
-
-   const priceId =
-   plan === "pro"
-   ? process.env.STRIPE_PRICE_PRO
-   : process.env.STRIPE_PRICE_STARTER;
-
-   if (!priceId) {
-    return NextResponse.json({ error: "Missing userId" }, { status: 400 });
-
-   }
-
-   function getSiteUrl(req: Request) {
-  const origin = req.headers.get('origin')
-  if (origin) return origin
-
-  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host')
-  const proto = req.headers.get('x-forwarded-proto') ?? 'https'
-  if (host) return `${proto}://${host}`
-
-  return 'http://localhost:3000'
-}
-
-   const site = getSiteUrl(req)
-   const stripe = getStripe(); // getStripe should return a Stripe instance
-
-   const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    customer: body.customerId, // Make sure to pass customerId in the request body
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `/success`,
-    cancel_url: `/cancel`,
-    allow_promotion_codes: true,
-    metadata: { supabase_user_id: userId, target_plan: plan },
-   });
-
-
-  return NextResponse.json({ url: session.url});
- }catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "checkout failed" }, { status: 500 });
+  // ✅ FIXED
+  if (!user) {
+    return NextResponse.json({ error: "Not logged in" }, { status: 401 });
   }
+
+  const body = await req.json().catch(() => ({}));
+  const plan = (body?.plan as PlanName) ?? "starter";
+
+  if (plan === "free") {
+    return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
+  }
+
+  const store = process.env.SHOPIFY_STORE_DOMAIN;
+  if (!store) {
+    return NextResponse.json({ error: "Missing SHOPIFY_STORE_DOMAIN" }, { status: 500 });
+  }
+
+  const p = SHOPIFY_PLANS[plan];
+  if (!p?.variantId || !p?.sellingPlanId) {
+    return NextResponse.json({ error: "Plan not configured" }, { status: 500 });
+  }
+
+  const qs = new URLSearchParams();
+  qs.set("selling_plan", p.sellingPlanId);
+  qs.set("attributes[user_id]", user.id);
+  qs.set("attributes[plan]", plan);
+  if (user.email) qs.set("checkout[email]", user.email);
+
+  const url = `https://${store}/cart/${p.variantId}:1?${qs.toString()}`;
+
+  return NextResponse.json({ url });
 }

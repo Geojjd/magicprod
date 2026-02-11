@@ -1,6 +1,6 @@
 import { getPlanForUser, countUsageThisMonth } from "../usage";
 import { getSupabaseAdmin } from "../SupabaseAdmin";
-import { supabase } from "../supabaseClient";
+
 
 
 const LIMITS = {

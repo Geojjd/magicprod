@@ -36,7 +36,7 @@ export default function HomePage() {
 
           <div style={fineRow}>
             <span style={fine}>Monthly subscriptions • Cancel anytime</span>
-            <span style={dot}>•</span>
+            <span style={dot}>•n </span>
             <span style={fine}>Built for drill, rap, R&B, trap, pop</span>
           </div>
         </div>

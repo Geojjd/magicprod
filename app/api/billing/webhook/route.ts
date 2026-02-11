@@ -1,72 +1,40 @@
-import { NextResponse } from 'next/server'
-import { headers } from 'next/headers'
-import { getStripe } from '@/app/lib/stripe'
-import { getSupabaseAdmin } from '@/app/lib/SupabaseAdmin'
-
-export const runtime = 'nodejs' // IMPORTANT for Stripe signature
+// app/api/billing/checkout/route.ts
+import { NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { SHOPIFY_PLANS } from "@/app/lib/shopifyPlans";
+import type { PlanName } from "@/app/lib/plan";
 
 export async function POST(req: Request) {
-  const stripe = getStripe()
-  const supabaseAdmin = getSupabaseAdmin()
-  const sig = (await headers()).get('stripe-signature')
-  if (!sig) return NextResponse.json({ error: 'Missing stripe-signature' }, { status: 400 })
+  const supabase = createSupabaseServerClient();
+  const { data } = await supabase.auth.getUser();
+  const user = data?.user;
 
-  const rawBody = await req.text()
-
-  let event: any
-  try {
-    event = stripe.webhooks.constructEvent(
-      rawBody,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET!
-    )
-  } catch (err: any) {
-    return NextResponse.json({ error: `Webhook signature failed: ${err.message}` }, { status: 400 })
+  if (!user) {
+    return NextResponse.json({ error: "Not logged in" }, { status: 401 });
   }
 
-  try {
-    // 1) Subscription active/created
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as any
-      const userId = session?.metadata?.supabase_user_id
-      const targetPlan = session?.metadata?.target_plan // 'pro'|'studio'
+  const body = await req.json().catch(() => ({}));
+  const plan = (body?.plan as PlanName) ?? "starter";
 
-      if (userId && targetPlan) {
-        await supabaseAdmin
-          .from('profiles')
-          .update({ plan: targetPlan })
-          .eq('id', userId)
-      }
-    }
-
-    // 2) Keep plan in sync if subscription changes later (canceled, unpaid, etc.)
-    if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
-      const sub = event.data.object as any
-      const customerId = sub.customer as string
-
-      // Find user by stripe_customer_id
-      const { data: profile } = await supabaseAdmin
-        .from('profiles')
-        .select('id')
-        .eq('stripe_customer_id', customerId)
-        .single()
-
-      if (profile?.id) {
-        const status = sub.status as string
-        const isActive = ['active', 'trialing'].includes(status)
-
-        // If canceled / unpaid etc -> downgrade to free
-        if (!isActive) {
-          await supabaseAdmin
-            .from('profiles')
-            .update({ plan: 'free' })
-            .eq('id', profile.id)
-        }
-      }
-    }
-
-    return NextResponse.json({ received: true })
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message ?? 'Webhook handler failed' }, { status: 500 })
+  if (plan === "free") {
+    return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
   }
+
+  const store = process.env.SHOPIFY_STORE_DOMAIN!;
+  if (!store) return NextResponse.json({ error: "Missing SHOPIFY_STORE_DOMAIN" }, { status: 500 });
+
+  const p = SHOPIFY_PLANS[plan];
+  if (!p?.variantId || !p?.sellingPlanId) {
+    return NextResponse.json({ error: "Plan not configured" }, { status: 500 });
+  }
+
+  // Shopify cart permalink + subscription selling_plan + attributes + prefilled email
+  const qs = new URLSearchParams();
+  qs.set("selling_plan", p.sellingPlanId);
+  qs.set("attributes[user_id]", user.id);
+  if (user.email) qs.set("checkout[email]", user.email);
+
+  const url = `https://${store}/cart/${p.variantId}:1?${qs.toString()}`;
+
+  return NextResponse.json({ url });
 }
