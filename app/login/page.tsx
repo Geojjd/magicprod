@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../lib/supabaseClient";
@@ -17,15 +17,32 @@ const styles = {
     flexDirection: "column" as const,
     alignItems: "center",
   },
-  title: { fontSize: 36, marginBottom: 10, fontWeight: 700, color: "#222", letterSpacing: 1 },
-  subtitle: { opacity: 0.8, marginBottom: 24, fontSize: 16, color: "#555" },
-  form: { display: "flex", flexDirection: "column" as const, gap: 16, width: "100%" },
+  title: {
+    fontSize: 36,
+    marginBottom: 10,
+    fontWeight: 700,
+    color: "#222",
+    letterSpacing: 1,
+  },
+  subtitle: {
+    opacity: 0.8,
+    marginBottom: 24,
+    fontSize: 16,
+    color: "#555",
+  },
+  form: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 16,
+    width: "100%",
+  },
   input: {
     padding: "12px 16px",
     borderRadius: 8,
     border: "1px solid #ddd",
     fontSize: 16,
     outline: "none",
+    transition: "border 0.2s",
   },
   button: {
     padding: "12px 0",
@@ -39,41 +56,54 @@ const styles = {
     boxShadow: "0 2px 8px rgba(99,102,241,0.08)",
     transition: "background 0.2s",
   },
-  error: { marginTop: 12, color: "tomato", fontWeight: 500, textAlign: "center" as const },
+  error: {
+    marginTop: 12,
+    color: "tomato",
+    fontWeight: 500,
+    textAlign: "center" as const,
+  },
+  ok: {
+    marginTop: 12,
+    color: "green",
+    fontWeight: 600,
+    textAlign: "center" as const,
+  },
 };
 
 function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-
-  // ✅ default to /app (not /dashboard) unless next= is provided
-  const next = searchParams.get("next") || "/app";
+  const next = searchParams.get("next") || "/dashboard";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-
-  // ✅ If already signed in, send them where they should go
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.push(next);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [next]);
+  const [ok, setOk] = useState<string | null>(null);
 
   async function onLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setMsg(null);
+    setOk(null);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
     setLoading(false);
 
-    if (error) return setMsg(error.message);
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
 
-    router.push(next);
+    setOk("Signed in! Redirecting…");
+
+    // ✅ IMPORTANT: replace so we don't bounce back to /login
+    router.replace(next);
     router.refresh();
   }
 
@@ -82,8 +112,11 @@ function LoginPageInner() {
       <h1 style={styles.title}>Log in</h1>
       <p style={styles.subtitle}>
         New here?{" "}
-        <Link href="/signup" style={{ color: "#6366f1", fontWeight: 500 }}>
-          Sign up
+        <Link
+          href="/signup"
+          style={{ color: "#6366f1", fontWeight: 500 }}
+        >
+          Create account
         </Link>
       </p>
 
@@ -106,11 +139,12 @@ function LoginPageInner() {
         />
 
         <button style={styles.button} disabled={loading}>
-          {loading ? "Logging in..." : "Log in"}
+          {loading ? "Logging in…" : "Log in"}
         </button>
-
-        {msg ? <div style={styles.error}>{msg}</div> : null}
       </form>
+
+      {msg ? <div style={styles.error}>{msg}</div> : null}
+      {ok ? <div style={styles.ok}>{ok}</div> : null}
     </main>
   );
 }
