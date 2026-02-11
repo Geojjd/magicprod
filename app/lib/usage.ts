@@ -1,23 +1,47 @@
-import type { PlanName } from "./plan";
 import { getSupabaseAdmin } from "./SupabaseAdmin";
 
-export async function getPlanForUser(userId: string): Promise<{ plan: PlanName; subActive: boolean }> {
-  const supabaseAdmin = getSupabaseAdmin();
+export async function getPlanForUser(userId: string) {
+  const supabase = getSupabaseAdmin();
 
-  const { data: row } = await supabaseAdmin
+  const { data } = await supabase
     .from("user_plans")
-    .select("plan,status,current_period_end")
+    .select("plan, status, current_period_end")
     .eq("user_id", userId)
     .maybeSingle();
 
-  const plan = (row?.plan as PlanName) ?? "free";
-  const status = (row?.status ?? "").toString().toLowerCase();
-  const end = row?.current_period_end ? new Date(row.current_period_end).getTime() : null;
+  if (!data) {
+    return { plan: "free", subActive: false };
+  }
 
-  const activeStatus = status === "active" || status === "trialing";
-  const notExpired = end == null ? true : end > Date.now();
+  const subActive =
+    data.status === "active" &&
+    (!data.current_period_end ||
+      new Date(data.current_period_end) > new Date());
 
-  const subActive = activeStatus && notExpired;
+  return {
+    plan: data.plan ?? "free",
+    subActive,
+  };
+}
 
-  return { plan: subActive ? plan : "free", subActive };
+export async function countUsageThisMonth(
+  userId: string,
+  eventType: string
+) {
+  const supabase = getSupabaseAdmin();
+
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const { data } = await supabase
+    .from("usage_events")
+    .select("qty")
+    .eq("user_id", userId)
+    .eq("event_type", eventType)
+    .gte("created_at", startOfMonth.toISOString());
+
+  if (!data) return 0;
+
+  return data.reduce((total, row) => total + (row.qty ?? 1), 0);
 }
