@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
+import PricingClient from "./PricingClient";
+
+export const dynamic = "force-dynamic"; // avoids static prerender issues
 
 type Plan = "starter" | "pro";
 
