@@ -14,7 +14,7 @@ export default function PricingPage() {
     const startCheckout = async (plan: Plan) =>  {
         setLoading(plan);
         try {
-            const res = await fetch("/api/stripe/checkout", {
+            const res = await fetch("/api/shopify/checkout", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify ({ plan }),
