@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
 
 type Plan = "starter" | "pro";
 
-export default function PricingPage() {
+/* ---------------- INNER COMPONENT ---------------- */
+
+function PricingInner() {
   const [loading, setLoading] = useState<Plan | null>(null);
   const [email, setEmail] = useState<string | null>(null);
 
@@ -21,6 +23,7 @@ export default function PricingPage() {
 
   const startCheckout = async (plan: Plan) => {
     setLoading(plan);
+
     try {
       const res = await fetch("/api/shopify/checkout", {
         method: "POST",
@@ -46,7 +49,8 @@ export default function PricingPage() {
     }
   };
 
-  // ✅ Auto-resume after login
+  /* -------- AUTO RESUME AFTER LOGIN -------- */
+
   useEffect(() => {
     const auto = searchParams.get("autocheckout");
     const plan = searchParams.get("plan") as Plan | null;
@@ -54,7 +58,7 @@ export default function PricingPage() {
     if (auto === "1" && (plan === "starter" || plan === "pro")) {
       startCheckout(plan);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, []);
 
   const logout = async () => {
@@ -65,27 +69,44 @@ export default function PricingPage() {
 
   return (
     <main style={{ maxWidth: 1000, margin: "0 auto", padding: "48px 20px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <h1 style={{ fontSize: 44, margin: 0 }}>Pricing</h1>
-          <p style={{ opacity: 0.8, marginTop: 10 }}>Choose a plan. You can cancel anytime.</p>
+          <p style={{ opacity: 0.8, marginTop: 10 }}>
+            Choose a plan. You can cancel anytime.
+          </p>
         </div>
 
-        <div style={{ textAlign: "right", fontSize: 14, opacity: 0.9 }}>
+        <div>
           {email ? (
             <>
-              <div>Signed in as <b>{email}</b></div>
+              <div style={{ fontSize: 14 }}>
+                Signed in as <b>{email}</b>
+              </div>
               <button
                 onClick={logout}
-                style={{ marginTop: 8, padding: "8px 12px", borderRadius: 10, border: "1px solid #333", background: "transparent" }}
+                style={{
+                  marginTop: 8,
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #333",
+                  background: "transparent",
+                }}
               >
                 Log out
               </button>
             </>
           ) : (
             <button
-              onClick={() => router.push("/login?next=" + encodeURIComponent("/pricing"))}
-              style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #333", background: "transparent" }}
+              onClick={() =>
+                router.push("/login?next=" + encodeURIComponent("/pricing"))
+              }
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #333",
+                background: "transparent",
+              }}
             >
               Log in
             </button>
@@ -119,16 +140,21 @@ export default function PricingPage() {
           onClick={() => startCheckout("pro")}
         />
       </div>
-
-      <button
-        style={{ marginTop: 28, padding: "10px 14px", borderRadius: 10, border: "1px solid #333" }}
-        onClick={() => router.push("/app")}
-      >
-        Back to App
-      </button>
     </main>
   );
 }
+
+/* ---------------- OUTER SUSPENSE WRAPPER ---------------- */
+
+export default function PricingPage() {
+  return (
+    <Suspense>
+      <PricingInner />
+    </Suspense>
+  );
+}
+
+/* ---------------- PLAN CARD ---------------- */
 
 function PlanCard(props: {
   name: string;
@@ -141,7 +167,9 @@ function PlanCard(props: {
   return (
     <div style={{ border: "1px solid #333", borderRadius: 16, padding: 18 }}>
       <div style={{ fontWeight: 900, fontSize: 18 }}>{props.name}</div>
-      <div style={{ fontSize: 34, marginTop: 10, fontWeight: 900 }}>{props.price}</div>
+      <div style={{ fontSize: 34, marginTop: 10, fontWeight: 900 }}>
+        {props.price}
+      </div>
 
       <ul style={{ marginTop: 14, opacity: 0.9 }}>
         {props.bullets.map((b) => (
