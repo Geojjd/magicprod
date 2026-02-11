@@ -1,75 +1,55 @@
-import { getSupabaseAdmin } from "@/app/lib/SupabaseAdmin";
-import type { PlanName } from "@/app/lib/plan";
+import { NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
+import { getPlanForUser, countUsageThisMonth } from "@/app/lib/usage";
 
-/** helper: start of current month (UTC) */
-function monthStart(d = new Date()) {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0));
-}
+const LIMITS = {
+  free: { generation: 10, export: 5, audio_minutes: 15 },
+  starter: { generation: 200, export: 50, audio_minutes: 300 },
+  pro: { generation: 2000, export: 500, audio_minutes: 5000 },
+} as const;
 
-/**
- * Return the user's plan + whether they have an active subscription.
- * Reads from `user_plans` which your dashboard uses.
- */
-export async function getPlanForUser(userId: string): Promise<{
-  plan: PlanName;
-  subActive: boolean;
-}> {
-  const supabase = getSupabaseAdmin();
+type PlanKey = keyof typeof LIMITS;
+type EventType = keyof (typeof LIMITS)["free"];
 
-  const { data: planRow } = await supabase
-    .from("user_plans")
-    .select("plan,status,current_period_end")
-    .eq("user_id", userId)
-    .maybeSingle();
+export async function GET() {
+  const supabase = createSupabaseServerClient();
 
-  const plan = (planRow?.plan as PlanName) ?? "free";
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const status = (planRow?.status ?? "").toLowerCase();
-  const periodEnd = planRow?.current_period_end ? new Date(planRow.current_period_end) : null;
+  if (!user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
 
-  // consider active if status active/trialing and not past end date (if present)
-  const subActive =
-    (status === "active" || status === "trialing") &&
-    (!periodEnd || periodEnd.getTime() > Date.now());
+  const userId = user.id;
 
-  return { plan, subActive };
-}
+  const { plan, subActive } = await getPlanForUser(userId);
+  const effectivePlan = (subActive ? plan : "free") as PlanKey;
 
-/** ✅ THIS is what your build is missing */
-export async function countUsageThisMonth(userId: string, eventType: string) {
-  const supabaseAdmin = getSupabaseAdmin();
-  const start = monthStart();
+  const types: EventType[] = ["generation", "export", "audio_minutes"];
 
-  const { count } = await supabaseAdmin
-    .from("usage_events")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("event_type", eventType)
-    .gte("created_at", start.toISOString());
-
-  return count ?? 0;
-}
-
-/** optional helper if you want all event totals in one call */
-export async function getUsedThisMonth(userId: string) {
-  const types = ["generation", "export", "audio_minutes"] as const;
-
-  const entries = await Promise.all(
-    types.map(async (t) => [t, await countUsageThisMonth(userId, t)] as const)
+  const usedEntries = await Promise.all(
+    types.map(async (t) => [
+      t,
+      await countUsageThisMonth(userId, t),
+    ])
   );
 
-  return Object.fromEntries(entries) as Record<(typeof types)[number], number>;
-}
+  const used = Object.fromEntries(usedEntries) as Record<EventType, number>;
+  const limits = LIMITS[effectivePlan];
 
-/** log usage event */
-export async function logUsage(userId: string, eventType: string, qty = 1, requestId?: string) {
-  const supabaseAdmin = getSupabaseAdmin();
+  const remaining = {
+    generation: Math.max(0, limits.generation - used.generation),
+    export: Math.max(0, limits.export - used.export),
+    audio_minutes: Math.max(0, limits.audio_minutes - used.audio_minutes),
+  };
 
-  await supabaseAdmin.from("usage_events").insert({
-    user_id: userId,
-    event_type: eventType,
-    qty,
-    request_id: requestId ?? null,
-    created_at: new Date().toISOString(),
+  return NextResponse.json({
+    plan: effectivePlan,
+    subActive,
+    used,
+    limits,
+    remaining,
   });
 }
