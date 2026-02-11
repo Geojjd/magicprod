@@ -1,24 +1,21 @@
-// app/lib/shopifyPlans.ts
-import type { PlanName } from "./plan";
-
-export type ShopifyPlanKey = Exclude<PlanName, "free">; // "starter" | "pro"
+export type PlanName = "starter" | "pro";
 
 export const SHOPIFY_PLANS: Record<
-  ShopifyPlanKey,
+  PlanName,
   { variantId: string; sellingPlanId: string }
 > = {
   starter: {
-    variantId: process.env.SHOPIFY_STARTER_VARIANT_ID!,
-    sellingPlanId: process.env.SHOPIFY_STARTER_SELLING_PLAN_ID!,
+    variantId: "SHOPIFY_STARTER_VARIANT_ID",
+    sellingPlanId: "SHOPIFY_STARTER_SELLING_PLAN_ID",
   },
   pro: {
-    variantId: process.env.SHOPIFY_PRO_VARIANT_ID!,
-    sellingPlanId: process.env.SHOPIFY_PRO_SELLING_PLAN_ID!,
+    variantId: "SHOPIFY_PRO_VARIANT_ID",
+    sellingPlanId: "SHOPIFY_PRO_SELLING_PLAN_ID",
   },
 };
 
-// helps webhook map variant -> plan
-export const VARIANT_TO_PLAN: Record<string, ShopifyPlanKey> = {
-  [process.env.SHOPIFY_STARTER_VARIANT_ID!]: "starter",
-  [process.env.SHOPIFY_PRO_VARIANT_ID!]: "pro",
+// 🔥 THIS is what your webhook needs
+export const PLAN_BY_VARIANT_ID: Record<string, PlanName> = {
+  [SHOPIFY_PLANS.starter.variantId]: "starter",
+  [SHOPIFY_PLANS.pro.variantId]: "pro",
 };

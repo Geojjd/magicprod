@@ -1,87 +1,43 @@
-import Stripe from "stripe";
-import { NextResponse, userAgent } from "next/server";
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
- apiVersion: "2026-01-28.clover" as any,
-});
-
-
-
-function supabaseServer() {
-  const cookieStore = cookies();
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: async () => (await cookieStore).getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(async ({ name, value, options }) =>
-            (await cookieStore).set(name, value, options)
-          );
-        },
-      },
-    }
-  );
-}
+import { NextResponse } from "next/server";
+import type { PlanName } from "@/app/lib/shopifyPlans";
+import { SHOPIFY_PLANS } from "@/app/lib/shopifyPlans";
+import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
 
 export async function POST(req: Request) {
-  const { plan } = await req.json();
-  const PRICE_BY_PLAN = {
-    starter: process.env.STRIPE_PRICE_STARTER!,
-    pro: process.env.STRIPE_PRICE_PRO!,
-  } as const;
-
-  const priceId = PRICE_BY_PLAN[plan as "starter" | "pro"];
-
-  if (!priceId) {
-    return NextResponse.json({ error: "invalid plan"}, { status: 400});
-  }
-
-  const supabase = supabaseServer();
-  const { data: userData } = await supabase.auth.getUser();
-  const user = userData.user;
+  const supabase = createSupabaseServerClient();
+  const { data } = await supabase.auth.getUser();
+  const user = data.user;
 
   if (!user) {
     return NextResponse.json({ error: "Not logged in" }, { status: 401 });
   }
 
-  // get/create stripe customer
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("stripe_customer_id")
-    .eq("id", user.id)
-    .single();
+  const body = await req.json().catch(() => ({}));
+  const plan = (body?.plan ?? "starter") as PlanName;
 
-  let customerId = profile?.stripe_customer_id || null;
-
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: user.email ?? undefined,
-      metadata: { supabase_user_id: user.id },
-    });
-    customerId = customer.id;
-
-    await supabase.from("profiles").upsert({
-      id: user.id,
-      email: user.email,
-      stripe_customer_id: customerId,
-    });
+  if (!(plan in SHOPIFY_PLANS)) {
+    return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
   }
 
-  const origin = req.headers.get("origin") || "http://localhost:3000";
+  const store = process.env.SHOPIFY_STORE_DOMAIN; // e.g. "magicprodz.myshopify.com"
+  if (!store) {
+    return NextResponse.json({ error: "Missing SHOPIFY_STORE_DOMAIN" }, { status: 500 });
+  }
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    customer: customerId,
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${origin}/dashboard?checkout=success`,
-    cancel_url: `${origin}/pricing?checkout=cancel`,
-    allow_promotion_codes: true,
-    metadata: { supabase_user_id: user.id },
-  });
+  const p = SHOPIFY_PLANS[plan];
 
-  return NextResponse.json({ url: session.url });
+  // Cart permalink -> redirects into Shopify checkout
+  const qs = new URLSearchParams();
+  qs.set("selling_plan", p.sellingPlanId);
+
+  // IMPORTANT: link checkout to your Supabase user
+  qs.set("attributes[user_id]", user.id);
+
+  // Prefill email (nice UX) + helps fallback matching
+  if (user.email) qs.set("checkout[email]", user.email);
+
+  // quantity = 1
+  const url = `https://${store}/cart/${p.variantId}:1?${qs.toString()}`;
+
+  return NextResponse.json({ url });
 }
