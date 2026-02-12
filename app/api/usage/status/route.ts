@@ -1,55 +1,48 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/app/lib/supabaseServer";
-import { getPlanForUser, countUsageThisMonth } from "@/app/lib/usage";
+import { SHOPIFY_PLANS, type PlanName } from "@/app/lib/shopifyPlans";
 
-const LIMITS = {
-  free: { generation: 10, export: 5, audio_minutes: 15 },
-  starter: { generation: 200, export: 50, audio_minutes: 300 },
-  pro: { generation: 2000, export: 500, audio_minutes: 5000 },
-} as const;
-
-type PlanKey = keyof typeof LIMITS;
-type EventType = keyof (typeof LIMITS)["free"];
-
-export async function GET() {
+export async function POST(req: Request) {
   const supabase = createSupabaseServerClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data } = await supabase.auth.getUser();
+  const user = data.user;
 
   if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      {
+        error: "Not logged in",
+        redirectTo: "/login?next=/pricing",
+      },
+      { status: 401 }
+    );
   }
 
-  const userId = user.id;
+  const body = await req.json().catch(() => ({}));
+  const plan = (body?.plan as PlanName) ?? "starter";
 
-  const { plan, subActive } = await getPlanForUser(userId);
-  const effectivePlan = (subActive ? plan : "free") as PlanKey;
+  const store = process.env.SHOPIFY_STORE_DOMAIN;
+  if (!store) {
+    return NextResponse.json({ error: "Missing SHOPIFY_STORE_DOMAIN" }, { status: 500 });
+  }
 
-  const types: EventType[] = ["generation", "export", "audio_minutes"];
+  const p = SHOPIFY_PLANS[plan];
+  if (!p?.variantId) {
+    return NextResponse.json({ error: "Plan not configured" }, { status: 500 });
+  }
 
-  const usedEntries = await Promise.all(
-    types.map(async (t) => [
-      t,
-      await countUsageThisMonth(userId, t),
-    ])
-  );
+  // Build Shopify cart permalink:
+  // https://STORE/cart/VARIANT_ID:1?selling_plan=...&attributes[user_id]=...&attributes[plan]=...&checkout[email]=...
+  const qs = new URLSearchParams();
+  if (p.sellingPlanId) qs.set("selling_plan", p.sellingPlanId);
 
-  const used = Object.fromEntries(usedEntries) as Record<EventType, number>;
-  const limits = LIMITS[effectivePlan];
+  // Pass metadata through to order.note_attributes (Shopify will include these)
+  qs.set("attributes[user_id]", user.id);
+  qs.set("attributes[plan]", plan);
 
-  const remaining = {
-    generation: Math.max(0, limits.generation - used.generation),
-    export: Math.max(0, limits.export - used.export),
-    audio_minutes: Math.max(0, limits.audio_minutes - used.audio_minutes),
-  };
+  // Prefill email if available
+  if (user.email) qs.set("checkout[email]", user.email);
 
-  return NextResponse.json({
-    plan: effectivePlan,
-    subActive,
-    used,
-    limits,
-    remaining,
-  });
+  const url = `https://${store}/cart/${p.variantId}:1?${qs.toString()}`;
+
+  return NextResponse.json({ url });
 }

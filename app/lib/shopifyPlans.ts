@@ -2,24 +2,17 @@ export type PlanName = "starter" | "pro";
 
 export const SHOPIFY_PLANS: Record<
   PlanName,
-  { variantId: string; sellingPlanId: string; label: string }
+  {
+    variantId: string; // Shopify variant id (numeric as string)
+    sellingPlanId?: string; // optional (subscriptions)
+  }
 > = {
   starter: {
-    variantId: process.env.SHOPIFY_STARTER_VARIANT_ID!,
-    sellingPlanId: process.env.SHOPIFY_STARTER_SELLING_PLAN_ID!,
-    label: "Starter",
+    variantId: "YOUR_STARTER_VARIANT_ID",
+    sellingPlanId: "YOUR_STARTER_SELLING_PLAN_ID", // optional
   },
   pro: {
-    variantId: process.env.SHOPIFY_PRO_VARIANT_ID!,
-    sellingPlanId: process.env.SHOPIFY_PRO_SELLING_PLAN_ID!,
-    label: "Pro",
+    variantId: "YOUR_PRO_VARIANT_ID",
+    sellingPlanId: "YOUR_PRO_SELLING_PLAN_ID", // optional
   },
 };
-
-export function assertShopifyPlansConfigured() {
-  for (const [k, v] of Object.entries(SHOPIFY_PLANS)) {
-    if (!v.variantId || !v.sellingPlanId) {
-      throw new Error(`Missing Shopify plan env vars for: ${k}`);
-    }
-  }
-}

@@ -1,45 +1,65 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Plan = "starter" | "pro";
 
 export default function PricingClient() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const msg = searchParams.get("msg");
+  const sp = useSearchParams();
 
+  const planFromQuery = (sp.get("plan") as Plan | null) ?? null;
   const [loading, setLoading] = useState<Plan | null>(null);
 
-  const startCheckout = async (plan: Plan) => {
+  // Prevent repeated auto-checkout loops
+  const autoRanRef = useRef(false);
+
+  const nextAfterLogin = useMemo(() => {
+    // Preserve plan in URL so we can auto-start after login
+    return planFromQuery ? `/pricing?plan=${planFromQuery}` : "/pricing";
+  }, [planFromQuery]);
+
+  async function startCheckout(plan: Plan) {
     setLoading(plan);
 
     try {
       const res = await fetch("/api/shopify/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
+        headers: { "content-type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({ plan }),
       });
 
+      const data = await res.json().catch(() => ({}));
+
       if (res.status === 401) {
-        router.push(`/login?next=/pricing`);
+        // Not logged in → go login and come back with plan
+        router.push(`/login?next=${encodeURIComponent(`/pricing?plan=${plan}`)}`);
         return;
       }
 
-      const data = await res.json();
-
-      if (!res.ok) {
+      if (!res.ok || !data?.url) {
         throw new Error(data?.error || "Checkout failed");
       }
 
-      window.location.href = data.url;
+      // Go to Shopify checkout
+      window.location.href = data.url as string;
     } catch (e: any) {
       alert(e?.message || "Checkout failed");
       setLoading(null);
     }
-  };
+  }
+
+  // Auto-start checkout after login if URL has ?plan=...
+  useEffect(() => {
+    if (!planFromQuery) return;
+    if (autoRanRef.current) return;
+
+    autoRanRef.current = true;
+    startCheckout(planFromQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planFromQuery]);
 
   return (
     <main style={{ maxWidth: 1000, margin: "0 auto", padding: "48px 20px" }}>
@@ -47,12 +67,6 @@ export default function PricingClient() {
       <p style={{ opacity: 0.8, marginTop: 10 }}>
         Choose a plan. You can cancel anytime.
       </p>
-
-      {msg && (
-        <div style={{ marginTop: 16, padding: 12, border: "1px solid #333", borderRadius: 12 }}>
-          {msg}
-        </div>
-      )}
 
       <div
         style={{
@@ -86,14 +100,20 @@ export default function PricingClient() {
           marginTop: 28,
           padding: "10px 14px",
           borderRadius: 10,
-          border: "1px solid #333",
+          border: "1px solid #ddd",
           background: "transparent",
-          cursor: "pointer",
         }}
         onClick={() => router.push("/app")}
       >
         Back to App
       </button>
+
+      {/* Optional: show a subtle message after login */}
+      <p style={{ marginTop: 14, opacity: 0.7 }}>
+        {planFromQuery
+          ? `Continuing checkout for: ${planFromQuery}…`
+          : `Tip: if you’re not logged in, you’ll be asked to sign in first.`}
+      </p>
     </main>
   );
 }
@@ -107,7 +127,7 @@ function PlanCard(props: {
   onClick: () => void;
 }) {
   return (
-    <div style={{ border: "1px solid #333", borderRadius: 16, padding: 18 }}>
+    <div style={{ border: "1px solid #eee", borderRadius: 16, padding: 18 }}>
       <div style={{ fontWeight: 900, fontSize: 18 }}>{props.name}</div>
       <div style={{ fontSize: 34, marginTop: 10, fontWeight: 900 }}>{props.price}</div>
 
@@ -127,15 +147,15 @@ function PlanCard(props: {
           width: "100%",
           padding: "12px 14px",
           borderRadius: 12,
-          border: "1px solid #333",
+          border: "none",
           background: "black",
           color: "white",
           fontWeight: 800,
-          cursor: "pointer",
           opacity: props.loading ? 0.7 : 1,
+          cursor: "pointer",
         }}
       >
-        {props.loading ? "Redirecting..." : props.cta}
+        {props.loading ? "Redirecting…" : props.cta}
       </button>
     </div>
   );

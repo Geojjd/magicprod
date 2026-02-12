@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { getSupabaseAdmin } from "@/app/lib/SupabaseAdmin";
+import { createClient } from "@supabase/supabase-js";
 
 function verifyShopifyHmac(rawBody: string, hmacHeader: string | null, secret: string) {
   if (!hmacHeader) return false;
 
-  const digest = crypto.createHmac("sha256", secret).update(rawBody, "utf8").digest("base64");
+  const digest = crypto
+    .createHmac("sha256", secret)
+    .update(rawBody, "utf8")
+    .digest("base64");
 
   // timing-safe compare
   const a = Buffer.from(digest);
@@ -46,18 +49,20 @@ export async function POST(req: Request) {
 
   const payload = JSON.parse(raw);
 
-  // We rely on what we set in checkout link:
-  const userIdFromAttr = getNoteAttribute(payload, "user_id");
-  const planFromAttr = getNoteAttribute(payload, "plan") as "starter" | "pro" | null;
+  // Supabase admin client (service role)
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY! // IMPORTANT: add this env var in Vercel
+  );
 
+  // We rely on the attributes we attached in checkout link:
+  const userIdFromAttr = getNoteAttribute(payload, "user_id");
+  const planFromAttr = (getNoteAttribute(payload, "plan") as "starter" | "pro" | null) ?? null;
   const email = getBestEmail(payload);
 
-  const supabase = getSupabaseAdmin();
-
-  // Decide user_id:
   let userId = userIdFromAttr;
 
-  // If no attribute, fallback lookup by email
+  // Fallback: lookup by email if user_id missing (optional)
   if (!userId && email) {
     const { data: profile } = await supabase
       .from("profiles")
@@ -68,27 +73,28 @@ export async function POST(req: Request) {
     if (profile?.id) userId = profile.id;
   }
 
-  // If still no user, acknowledge webhook (so Shopify doesn't retry forever)
+  // If we still can’t find a user, acknowledge webhook so Shopify stops retrying
   if (!userId) {
     return NextResponse.json({ received: true });
   }
 
-  // Decide plan:
-  // Prefer attribute. If missing, try to infer from line items selling plan name/id.
-  let plan: "starter" | "pro" = planFromAttr === "pro" ? "pro" : "starter";
+  const plan: "starter" | "pro" = planFromAttr === "pro" ? "pro" : "starter";
 
-  // Mark active for ~30 days (basic subscription window for usage limits)
+  // Simple 30-day period end (you can improve later using selling plan intervals)
   const current_period_end = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  await supabase.from("user_plans").upsert(
-    {
-      user_id: userId,
-      plan,
-      status: "active",
-      current_period_end,
-    },
-    { onConflict: "user_id" }
-  );
+  await supabase
+    .from("user_plans")
+    .upsert(
+      {
+        user_id: userId,
+        plan,
+        status: "active",
+        current_period_end,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    );
 
   return NextResponse.json({ received: true });
 }
